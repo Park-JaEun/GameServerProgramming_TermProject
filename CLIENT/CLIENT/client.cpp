@@ -233,7 +233,7 @@ void ProcessPacket(char* ptr)
 		if (other_id == g_myid) {
 			avatar.hide();
 		}
-		else {
+		else {	// npc¿Ã∏È
 			players.erase(other_id);
 		}
 		break;
@@ -398,6 +398,13 @@ int main()
 					break;
 				case sf::Keyboard::Escape:
 					window.close();
+					break;
+				case sf::Keyboard::A:
+					CS_ATTACK_PACKET p;
+					p.size = sizeof(p);
+					p.type = CS_ATTACK;
+					send_packet(&p);
+					cout << "attack\n";
 					break;
 				}
 				if (-1 != direction) {

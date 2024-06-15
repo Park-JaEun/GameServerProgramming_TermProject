@@ -207,7 +207,6 @@ void SESSION::send_add_player_packet(int c_id)
 	SC_ADD_OBJECT_PACKET add_packet;
 	add_packet.id = c_id;
 	strcpy_s(add_packet.name, clients[c_id]._name);
-	cout << "add_packet.name : " << add_packet.name << endl;
 	add_packet.size = sizeof(add_packet);
 	add_packet.type = SC_ADD_OBJECT;
 	add_packet.x = clients[c_id].x;
@@ -231,7 +230,6 @@ void SESSION::send_chat_packet(int p_id, const char* mess)
 
 void SESSION::send_attack_packet(int a_id, int t_id)
 {
-	cout << "send_attack_packet" << endl;
 	SC_ATTACK_PACKET packet;
 	packet.attack_id = t_id;
 	packet.size = sizeof(SC_ATTACK_PACKET);
@@ -239,7 +237,6 @@ void SESSION::send_attack_packet(int a_id, int t_id)
 	packet.attack_id = a_id;
 	packet.target_id = t_id;	
 
-	cout << sizeof(SC_ATTACK_PACKET) << endl;
 	do_send(&packet);
 }
 
@@ -267,6 +264,34 @@ void WakeUpNPC(int npc_id, int waker)
 		return;
 	TIMER_EVENT ev{ npc_id, chrono::system_clock::now(), EV_RANDOM_MOVE, 0 };
 	timer_queue.push(ev);
+}
+
+void Wait30sec(int npc_id)
+{
+	// 30초 후에 해당 NPC를 깨운다.
+	// NPC가 깨어나면 주변 플레이어를 확인하고, 시야에 있는 플레이어에게 이동 패킷을 보낸다.
+	cout << "30초 후에 NPC를 깨웁니다." << endl;
+	std::this_thread::sleep_for(std::chrono::seconds(3));
+
+	clients[npc_id]._state = ST_INGAME;
+	SC_ADD_OBJECT_PACKET p;
+	p.id = npc_id;
+	p.size = sizeof(SC_ADD_OBJECT_PACKET);
+	p.type = SC_ADD_OBJECT;
+	p.x = clients[npc_id].x;
+	p.y = clients[npc_id].y;
+	strcpy_s(p.name, clients[npc_id]._name);
+	p.npc_type = clients[npc_id]._npc_type;
+	clients[npc_id]._hp = 3;
+
+	strcpy_s(p.name, clients[npc_id]._name);
+	for (auto& pl : clients) {
+		if (pl._state != ST_INGAME) continue;
+		if (pl._id == npc_id) continue;
+		if (is_npc(pl._id)) continue;
+		if (can_see(npc_id, pl._id))
+			pl.do_send(&p);
+	}
 }
 
 void process_packet(int c_id, char* packet)
@@ -354,6 +379,57 @@ void process_packet(int c_id, char* packet)
 			}
 	}
 				break;
+
+	case CS_ATTACK:	{
+		// 플레이어의 위치에서 상하좌우에 npc가 있는지 확인하고 있으면 공격한다.
+		// 공격은 npc의 hp를 감소시키고, npc의 hp가 0이 되면 npc를 제거한다.
+		int x = clients[c_id].x;
+		int y = clients[c_id].y;
+
+		// 나중에 섹터링으로 시야 있는 npc만 검사하는 것으로 바꿀 것
+		for (int i = MAX_USER; i < MAX_USER+MAX_NPC; ++i)
+		{// 플레이어 좌표의 상하좌우에 npc가 있으면 npc의 hp를 감소시킨다.
+			if (clients[i].x == x-1 && clients[i].y == y) 
+			{
+				clients[i]._hp -= clients[c_id]._damage;
+				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
+			}
+			if (clients[i].x == x && clients[i].y == y-1)
+			{
+				clients[i]._hp -= clients[c_id]._damage;
+				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
+			}
+			if (clients[i].x == x+1 && clients[i].y == y)
+			{
+				clients[i]._hp -= clients[c_id]._damage;
+				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
+			}
+			if (clients[i].x == x && clients[i].y == y+1)
+			{
+				clients[i]._hp -= clients[c_id]._damage;
+				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
+			}
+
+			if (clients[i]._hp <= 0) {
+				SC_REMOVE_OBJECT_PACKET p;
+				p.id = i;
+				p.size = sizeof(SC_REMOVE_OBJECT_PACKET);
+				p.type = SC_REMOVE_OBJECT;
+				clients[c_id].do_send(&p);
+
+				clients[i]._state = ST_FREE;
+				Wait30sec(i);
+				//cout << "npc_id : " << i << " is dead." << " hp : " << clients[i]._hp << endl;
+			}
+		}
+
+
+		
+					
+					
+		break;
+	}
+
 	}
 }
 
@@ -561,7 +637,7 @@ void worker_thread(HANDLE h_iocp)
 				}
 			}
 			if (true == keep_alive) {
-				do_npc_random_move(static_cast<int>(key));
+				//do_npc_random_move(static_cast<int>(key));
 				TIMER_EVENT ev{ key, chrono::system_clock::now() + 1s, EV_RANDOM_MOVE, 0 };
 				timer_queue.push(ev);
 				{
