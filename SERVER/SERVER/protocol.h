@@ -30,6 +30,9 @@ constexpr char SC_MOVE_OBJECT = 6;
 constexpr char SC_CHAT = 7;
 constexpr char SC_STAT_CHANGE = 8;
 constexpr char SC_LOGIN_OK = 9;   //++
+constexpr char SC_ATTACK = 10;   //++
+
+enum N_TYPE { NT_PEACE, NT_AGRO, NT_PLAYER };
 
 #pragma pack (push, 1)
 struct CS_LOGIN_PACKET {
@@ -70,6 +73,7 @@ struct SC_LOGIN_INFO_PACKET {
 	int      exp;
 	int      level;
 	short   x, y;
+	char   name[NAME_SIZE];
 };
 
 struct SC_ADD_OBJECT_PACKET {
@@ -78,6 +82,7 @@ struct SC_ADD_OBJECT_PACKET {
 	int      id;
 	short   x, y;
 	char   name[NAME_SIZE];
+	N_TYPE   npc_type;
 };
 
 struct SC_REMOVE_OBJECT_PACKET {
@@ -115,6 +120,13 @@ struct SC_STAT_CHANGEL_PACKET {
 	int      exp;
 	int      level;
 
+};
+
+struct SC_ATTACK_PACKET {
+	unsigned short size;
+	char   type;
+	int      attack_id;
+	int      target_id;
 };
 
 #pragma pack (pop)

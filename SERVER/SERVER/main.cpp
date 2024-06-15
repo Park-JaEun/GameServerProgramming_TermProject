@@ -58,12 +58,14 @@ public:
 };
 
 enum S_STATE { ST_FREE, ST_ALLOC, ST_INGAME };
+//enum N_TYPE { NT_PEACE, NT_AGRO, NT_PLAYER };
 class SESSION {
 	OVER_EXP _recv_over;
 
 public:
 	mutex _s_lock;
 	S_STATE _state;
+	N_TYPE _npc_type;
 	atomic_bool	_is_active;		// 주위에 플레이어가 있는가?
 	int _id;
 	SOCKET _socket;
@@ -78,6 +80,8 @@ public:
 	int _npc_move_time;
 	bool _send_chat;
 	int _player;
+	int _hp;
+	int _damage;	
 public:
 	SESSION()
 	{
@@ -117,11 +121,13 @@ public:
 		p.type = SC_LOGIN_INFO;
 		p.x = x;
 		p.y = y;
+		strncpy_s(p.name, _name, NAME_SIZE);
 		do_send(&p);
 	}
 	void send_move_packet(int c_id);
 	void send_add_player_packet(int c_id);
 	void send_chat_packet(int c_id, const char* mess);
+	void send_attack_packet(int a_id, int t_id);
 	void send_remove_player_packet(int c_id)
 	{
 		_vl.lock();
@@ -201,10 +207,12 @@ void SESSION::send_add_player_packet(int c_id)
 	SC_ADD_OBJECT_PACKET add_packet;
 	add_packet.id = c_id;
 	strcpy_s(add_packet.name, clients[c_id]._name);
+	cout << "add_packet.name : " << add_packet.name << endl;
 	add_packet.size = sizeof(add_packet);
 	add_packet.type = SC_ADD_OBJECT;
 	add_packet.x = clients[c_id].x;
 	add_packet.y = clients[c_id].y;
+	if (is_npc(c_id)) add_packet.npc_type = clients[c_id]._npc_type;
 	_vl.lock();
 	_view_list.insert(c_id);
 	_vl.unlock();
@@ -218,6 +226,20 @@ void SESSION::send_chat_packet(int p_id, const char* mess)
 	packet.size = sizeof(packet);
 	packet.type = SC_CHAT;
 	strcpy_s(packet.mess, mess);
+	do_send(&packet);
+}
+
+void SESSION::send_attack_packet(int a_id, int t_id)
+{
+	cout << "send_attack_packet" << endl;
+	SC_ATTACK_PACKET packet;
+	packet.attack_id = t_id;
+	packet.size = sizeof(SC_ATTACK_PACKET);
+	packet.type = SC_ATTACK;
+	packet.attack_id = a_id;
+	packet.target_id = t_id;	
+
+	cout << sizeof(SC_ATTACK_PACKET) << endl;
 	do_send(&packet);
 }
 
@@ -258,6 +280,10 @@ void process_packet(int c_id, char* packet)
 			clients[c_id].x = rand() % W_WIDTH;
 			clients[c_id].y = rand() % W_HEIGHT;
 			clients[c_id]._state = ST_INGAME;
+			clients[c_id]._npc_type = NT_PLAYER;
+			clients[c_id]._hp = 3;
+			clients[c_id]._damage = 1;
+
 		}
 		clients[c_id].send_login_info_packet();
 		for (auto& pl : clients) {
@@ -541,7 +567,7 @@ void worker_thread(HANDLE h_iocp)
 				{
 					clients[key]._ll.lock();
 					auto L = clients[key]._L;
-					lua_getglobal(L, "event_player_move");	
+					lua_getglobal(L, "event_player_attack");	
 					lua_pushnumber(L, ex_over->_ai_target_obj);	
 					lua_pcall(L, 1, 0, 0);
 					clients[key]._ll.unlock();
@@ -556,7 +582,7 @@ void worker_thread(HANDLE h_iocp)
 		case OP_PLAYER_MOVE: {
 			clients[key]._ll.lock();
 			auto L = clients[key]._L;
-			lua_getglobal(L, "event_player_move");	// 플레이어가 이동함
+			lua_getglobal(L, "event_player_attack");	// 플레이어가 이동함
 			lua_pushnumber(L, ex_over->_ai_target_obj);	// 이동한 애
 			lua_pcall(L, 1, 0, 0);
 			clients[key]._ll.unlock();
@@ -641,18 +667,41 @@ int API_SendMessage(lua_State* L)
 	return 0;
 }
 
+int API_Attack(lua_State* L)
+{
+	int my_id = (int)lua_tointeger(L, -2);
+	int user_id = (int)lua_tointeger(L, -1);
 
+	lua_pop(L, 3);
+
+	clients[user_id].send_attack_packet(my_id, user_id);
+	clients[user_id]._hp -= clients[my_id]._damage; 	// 맞은 애 hp 감소
+	cout << "user_id : " << user_id << " hp : " << clients[user_id]._hp << endl;
+
+	return 0;
+}
 
 void InitializeNPC()
 {
 	cout << "NPC intialize begin.\n";
 	//for (int i = MAX_USER; i < MAX_USER + MAX_NPC; ++i) {
-	for (int i = MAX_USER; i < MAX_USER + 5000; ++i) {
+	for (int i = MAX_USER; i < MAX_USER + 10000; ++i) {
 		clients[i].x = rand() % W_WIDTH;
 		clients[i].y = rand() % W_HEIGHT;
 		clients[i]._id = i;
 		sprintf_s(clients[i]._name, "NPC%d", i);
 		clients[i]._state = ST_INGAME;
+		if (rand() % 2 == 0) {
+			clients[i]._npc_type = NT_PEACE;
+			clients[i]._hp = 3;
+			clients[i]._damage = 1;
+		}
+		else {
+			clients[i]._hp = 3;
+			clients[i]._damage = 1;
+			clients[i]._npc_type = NT_AGRO;
+		}
+
 
 		auto L = clients[i]._L = luaL_newstate();
 		luaL_openlibs(L);
@@ -668,6 +717,7 @@ void InitializeNPC()
 		lua_register(L, "API_get_x", API_get_x);
 		lua_register(L, "API_get_y", API_get_y);
 		lua_register(L, "API_get_npc_move_time", API_get_npc_move_time);
+		lua_register(L, "API_Attack", API_Attack);
 	}
 	cout << "NPC initialize end.\n";
 }

@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <Windows.h>
 #include <chrono>
+
 using namespace std;
 
 #include "..\..\SERVER\SERVER\protocol.h"
@@ -36,6 +37,7 @@ public:
 	int id;
 	int m_x, m_y;
 	char name[NAME_SIZE];
+	char nickname[NAME_SIZE];
 	OBJECT(sf::Texture& t, int x, int y, int x2, int y2) {
 		m_showing = false;
 		m_sprite.setTexture(t);
@@ -108,20 +110,24 @@ OBJECT green_tile;
 
 sf::Texture* board;
 sf::Texture* player;
-sf::Texture* pieces;
+sf::Texture* pieces_m1;
+sf::Texture* pieces_m2;
+sf::Texture* pieces_m3;
 
 void client_initialize()
 {
 	board = new sf::Texture;
 	player = new sf::Texture;
-	pieces = new sf::Texture;
+	pieces_m1 = new sf::Texture;
+	pieces_m2 = new sf::Texture;
+	pieces_m3 = new sf::Texture;
 	board->loadFromFile("mymap.bmp");
 	player->loadFromFile("c_idle.png");
 	//pieces->loadFromFile("cloud.png");	// 장애물 구름
 	//pieces->loadFromFile("n_on.png");	// npc
-	pieces->loadFromFile("m1_idle.png");	// lv1 몬스터
-	//pieces->loadFromFile("m2_idle.png");	// lv2 몬스터
-	//pieces->loadFromFile("m_boss_idle.png");	// 보스
+	pieces_m1->loadFromFile("m1_idle.png");	// lv1 몬스터
+	pieces_m2->loadFromFile("m2_idle.png");	// lv2 몬스터
+	pieces_m3->loadFromFile("m_boss_idle.png");		// 보스
 	if (false == g_font.loadFromFile("cour.ttf")) {
 		cout << "Font Loading Error!\n";
 		exit(-1);
@@ -136,8 +142,10 @@ void client_finish()
 {
 	players.clear();
 	delete board;
-	delete pieces;
 	delete player;
+	delete pieces_m1;
+	delete pieces_m2;
+	delete pieces_m3;
 }
 
 void ProcessPacket(char* ptr)
@@ -147,25 +155,32 @@ void ProcessPacket(char* ptr)
 	{
 	case SC_LOGIN_INFO:
 	{
+		//cout << "SC_LOGIN_INFO\n";
 		SC_LOGIN_INFO_PACKET * packet = reinterpret_cast<SC_LOGIN_INFO_PACKET*>(ptr);
 		g_myid = packet->id;
 		avatar.id = g_myid;
 		avatar.move(packet->x, packet->y);
 		g_left_x = packet->x - SCREEN_WIDTH / 2;
 		g_top_y = packet->y - SCREEN_HEIGHT / 2;
+		//strncpy_s(avatar.nickname, packet->name, NAME_SIZE);
+		strncpy_s(players[g_myid].nickname, packet->name, NAME_SIZE);
 		avatar.show();
 	}
 	break;
 
 	case SC_ADD_OBJECT:
 	{
+		//cout << "SC_ADD_OBJECT\n";
 		SC_ADD_OBJECT_PACKET* my_packet = reinterpret_cast<SC_ADD_OBJECT_PACKET*>(ptr);
 		int id = my_packet->id;
-
+		
 		if (id == g_myid) {
 			avatar.move(my_packet->x, my_packet->y);
 			g_left_x = my_packet->x - SCREEN_WIDTH / 2;
 			g_top_y = my_packet->y - SCREEN_HEIGHT / 2;
+			//players[id].id = id;
+			//strncpy_s(players[id].nickname, my_packet->name, NAME_SIZE);
+			//cout << players[id].nickname << "님이 접속하셨습니다." << endl;
 			avatar.show();
 		}
 		else if (id < MAX_USER) {
@@ -173,20 +188,30 @@ void ProcessPacket(char* ptr)
 			players[id].id = id;
 			players[id].move(my_packet->x, my_packet->y);
 			players[id].set_name(my_packet->name);
+			strncpy_s(players[id].nickname, my_packet->name, NAME_SIZE);
 			players[id].show();
+			//cout << players[id].nickname << "님이 접속하셨습니다." << endl;
 		}
 		else {
 			//players[id] = OBJECT{ *pieces, 0, 0, 128, 128 };
-			players[id] = OBJECT{ *pieces, 0, 0, 64, 64 };
+			if (my_packet->npc_type == NT_PEACE)
+				players[id] = OBJECT{ *pieces_m1, 0, 0, 64, 64 };
+			else
+				players[id] = OBJECT{ *pieces_m2, 0, 0, 64, 64 };
+			
 			players[id].id = id;
 			players[id].move(my_packet->x, my_packet->y);
 			players[id].set_name(my_packet->name);
+			strncpy_s(players[id].nickname, my_packet->name, NAME_SIZE);
 			players[id].show();
+			//cout << players[id].nickname << "님이 접속하셨습니다." << endl;
+
 		}
 		break;
 	}
 	case SC_MOVE_OBJECT:
 	{
+		//cout << "SC_MOVE_OBJECT\n";
 		SC_MOVE_OBJECT_PACKET* my_packet = reinterpret_cast<SC_MOVE_OBJECT_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
@@ -202,6 +227,7 @@ void ProcessPacket(char* ptr)
 
 	case SC_REMOVE_OBJECT:
 	{
+		//cout << "SC_REMOVE_OBJECT\n";
 		SC_REMOVE_OBJECT_PACKET* my_packet = reinterpret_cast<SC_REMOVE_OBJECT_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
@@ -214,6 +240,7 @@ void ProcessPacket(char* ptr)
 	}
 	case SC_CHAT:
 	{
+		cout << "SC_CHAT\n";
 		SC_CHAT_PACKET* my_packet = reinterpret_cast<SC_CHAT_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
@@ -222,11 +249,22 @@ void ProcessPacket(char* ptr)
 		else {
 			players[other_id].set_chat(my_packet->mess);
 		}
+		break;
+	}
+	case SC_ATTACK:
 
+	{
+		//cout << "SC_ATTACK\n";
+		SC_ATTACK_PACKET* my_packet = reinterpret_cast<SC_ATTACK_PACKET*>(ptr);
+		//sprintf_s(clients[i]._name, "NPC%d", i);
+		//cout << "NPC" << my_packet->attack_id << "가 " << m_name << endl;
+		
+		//cout << players[my_packet->attack_id].nickname << "가 " << avatar.nickname << "를 공격했습니다." << endl;
+		cout << players[my_packet->attack_id].nickname << "가 " << players[my_packet->target_id].nickname << "를 공격했습니다." << endl;
 		break;
 	}
 	default:
-		printf("Unknown PACKET type [%d]\n", ptr[1]);
+		printf("Unknown PACKET type [%d]\n", ptr[2]);
 	}
 }
 
@@ -238,7 +276,10 @@ void process_data(char* net_buf, size_t io_byte)
 	static char packet_buffer[BUF_SIZE];
 
 	while (0 != io_byte) {
-		if (0 == in_packet_size) in_packet_size = ptr[0];
+		if (0 == in_packet_size) { 
+			in_packet_size = ptr[0]; 
+			//cout << "in_packet_size: " << in_packet_size << endl;
+		}
 		if (io_byte + saved_packet_size >= in_packet_size) {
 			memcpy(packet_buffer + saved_packet_size, ptr, in_packet_size - saved_packet_size);
 			ProcessPacket(packet_buffer);
@@ -328,6 +369,7 @@ int main()
 	strcpy_s(p.name, player_name.c_str());
 	send_packet(&p);
 	avatar.set_name(p.name);
+	strncpy_s(avatar.nickname, p.name, NAME_SIZE);
 
 	sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "2D CLIENT");
 	g_window = &window;
