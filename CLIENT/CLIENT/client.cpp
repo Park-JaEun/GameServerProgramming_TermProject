@@ -62,6 +62,10 @@ public:
 	int level;
 	int hp;
 	int exp;
+	int damage;
+	N_TYPE npc_type;
+	N_TYPE npc_move_type;
+
 	OBJECT(sf::Texture& t, int x, int y, int x2, int y2) {
 		m_showing = false;
 		m_alive = false;
@@ -248,6 +252,8 @@ void ProcessPacket(char* ptr)
 		P_A_R.move(packet->x + 1, packet->y);
 		g_left_x = packet->x - SCREEN_WIDTH / 2;
 		g_top_y = packet->y - SCREEN_HEIGHT / 2;
+		
+		players[g_myid].damage = packet->damage;
 		//strncpy_s(avatar.nickname, packet->name, NAME_SIZE);
 		strncpy_s(players[g_myid].nickname, packet->name, NAME_SIZE);
 		avatar.show();
@@ -269,6 +275,9 @@ void ProcessPacket(char* ptr)
 			P_A_R.move(my_packet->x + 1, my_packet->y);
 			g_left_x = my_packet->x - SCREEN_WIDTH / 2;
 			g_top_y = my_packet->y - SCREEN_HEIGHT / 2;
+			players[id].npc_type = my_packet->npc_type;
+			players[id].npc_move_type = my_packet->npc_move_type;
+			players[id].level = my_packet->level;
 			//players[id].id = id;
 			//strncpy_s(players[id].nickname, my_packet->name, NAME_SIZE);
 			//cout << players[id].nickname << "님이 접속하셨습니다." << endl;
@@ -277,9 +286,13 @@ void ProcessPacket(char* ptr)
 		else if (id < MAX_USER) {
 			players[id] = OBJECT{ *player, 0, 0, 64, 64 };
 			players[id].id = id;
+			players[id].damage = my_packet->damage;
 			players[id].move(my_packet->x, my_packet->y);
 			players[id].set_name(my_packet->name);
 			strncpy_s(players[id].nickname, my_packet->name, NAME_SIZE);
+			players[id].npc_type = my_packet->npc_type;
+			players[id].npc_move_type = my_packet->npc_move_type;
+			players[id].level = my_packet->level;
 			players[id].show();
 			//cout << players[id].nickname << "님이 접속하셨습니다." << endl;
 		}
@@ -294,6 +307,10 @@ void ProcessPacket(char* ptr)
 			players[id].move(my_packet->x, my_packet->y);
 			players[id].set_name(my_packet->name);
 			strncpy_s(players[id].nickname, my_packet->name, NAME_SIZE);
+			players[id].damage = my_packet->damage;
+			players[id].npc_type = my_packet->npc_type;
+			players[id].npc_move_type = my_packet->npc_move_type;
+			players[id].level = my_packet->level;
 			players[id].show();
 			//cout << players[id].nickname << "님이 접속하셨습니다." << endl;
 
@@ -329,10 +346,8 @@ void ProcessPacket(char* ptr)
 			avatar.hide();
 		}
 		else {	// npc이면
-			//players.erase(other_id);
-			players[other_id].hide();
-			players[other_id].set_endtime();
-			//cout << "npc" << other_id << "가 죽었습니다.\n";
+			players.erase(other_id);
+			//players[other_id].hide();
 		}
 		break;
 	}
@@ -358,7 +373,11 @@ void ProcessPacket(char* ptr)
 		//cout << "NPC" << my_packet->attack_id << "가 " << m_name << endl;
 		
 		//cout << players[my_packet->attack_id].nickname << "가 " << avatar.nickname << "를 공격했습니다." << endl;
-		cout << players[my_packet->attack_id].nickname << "가 " << players[my_packet->target_id].nickname << "를 공격했습니다." << endl;
+		if(is_npc(my_packet->attack_id) && is_pc(my_packet->target_id))
+			cout << players[my_packet->attack_id].nickname << "가 " << players[my_packet->target_id].nickname << "를 공격해 " << players[my_packet->attack_id].damage << "데미지를 입었습니다." << endl;
+		else if (is_pc(my_packet->attack_id) && is_npc(my_packet->target_id))
+			cout << players[my_packet->attack_id].nickname << "가 " << players[my_packet->target_id].nickname << "를 공격해 " << players[my_packet->attack_id].damage << "데미지를 입혔습니다." << endl;
+
 		break;
 	}
 
@@ -382,6 +401,28 @@ void ProcessPacket(char* ptr)
 
 		//cout<< "level: " << players[g_myid].level << " hp: " << players[g_myid].hp << endl;
 		break;
+	}
+	case SC_DIE:
+	{
+		SC_DIE_PACKET* my_packet = reinterpret_cast<SC_DIE_PACKET*>(ptr);
+		int other_id = my_packet->id;
+		if (other_id == g_myid) {
+			avatar.hide();
+		}
+		else {	// npc이면
+			//players.erase(other_id);
+			players[other_id].hide();
+			players[other_id].set_endtime();
+
+			if (players[other_id].npc_type == NT_AGRO)
+				cout << "npc" << other_id << "를 처치해 " << players[other_id].level * players[other_id].level * 2 * 2 << "의 경험치를 얻었습니다.\n";
+			else if (players[other_id].npc_move_type == NT_ROAM)
+				cout << "npc" << other_id << "를 처치해 " << players[other_id].level * players[other_id].level * 2 * 2 << "의 경험치를 얻었습니다.\n";
+			else
+				cout << "npc" << other_id << "를 처치해 " << players[other_id].level * players[other_id].level * 2 << "의 경험치를 얻었습니다.\n";
+		}
+		break;
+
 	}
 
 	default:

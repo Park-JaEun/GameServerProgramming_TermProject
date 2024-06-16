@@ -127,6 +127,12 @@ public:
 		p.type = SC_LOGIN_INFO;
 		p.x = x;
 		p.y = y;
+		p.hp = _hp;
+		p.max_hp = _max_hp;
+		p.level = _level;
+		p.exp = _exp;
+		p.damage = _damage;
+
 		strncpy_s(p.name, _name, NAME_SIZE);
 		do_send(&p);
 	}
@@ -195,6 +201,10 @@ void SESSION::send_add_player_packet(int c_id)
 	add_packet.type = SC_ADD_OBJECT;
 	add_packet.x = clients[c_id].x;
 	add_packet.y = clients[c_id].y;
+	add_packet.level = clients[c_id]._level;
+	add_packet.damage = clients[c_id]._damage;
+	add_packet.npc_type = clients[c_id]._npc_type;
+	add_packet.npc_move_type = clients[c_id]._npc_move_type;
 	if (is_npc(c_id)) add_packet.npc_type = clients[c_id]._npc_type;
 	_vl.lock();
 	_view_list.insert(c_id);
@@ -282,7 +292,7 @@ void process_packet(int c_id, char* packet)
 			clients[c_id]._level = 1;
 			clients[c_id]._exp = 100;
 
-			clients[c_id].send_ingameinfo_packet();
+			//clients[c_id].send_ingameinfo_packet();
 			//cout << "client" << c_id << " lev : " << clients[c_id]._level << " hp : " << clients[c_id]._hp << endl;
 
 
@@ -369,29 +379,36 @@ void process_packet(int c_id, char* packet)
 			if (clients[i].x == x-1 && clients[i].y == y) 
 			{
 				clients[i]._hp -= clients[c_id]._damage;
+				clients[c_id].send_attack_packet(c_id, i);
+
 				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
 			}
 			if (clients[i].x == x && clients[i].y == y-1)
 			{
 				clients[i]._hp -= clients[c_id]._damage;
+				clients[c_id].send_attack_packet(c_id, i);
+
 				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
 			}
 			if (clients[i].x == x+1 && clients[i].y == y)
 			{
 				clients[i]._hp -= clients[c_id]._damage;
+				clients[c_id].send_attack_packet(c_id, i);
+
 				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
 			}
 			if (clients[i].x == x && clients[i].y == y+1)
 			{
 				clients[i]._hp -= clients[c_id]._damage;
+				clients[c_id].send_attack_packet(c_id, i);
 				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
 			}
 
 			if (clients[i]._hp <= 0 && clients[i]._state == ST_INGAME) {
-				SC_REMOVE_OBJECT_PACKET p;
+				SC_DIE_PACKET p;
 				p.id = i;
-				p.size = sizeof(SC_REMOVE_OBJECT_PACKET);
-				p.type = SC_REMOVE_OBJECT;
+				p.size = sizeof(SC_DIE_PACKET);
+				p.type = SC_DIE;
 				clients[c_id].do_send(&p);
 
 

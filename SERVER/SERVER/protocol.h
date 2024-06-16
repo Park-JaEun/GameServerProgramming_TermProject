@@ -36,6 +36,7 @@ constexpr char SC_LOGIN_OK = 9;   //++
 constexpr char SC_ATTACK = 10;   //++
 constexpr char SC_NPC_WAKED = 11;   //++
 constexpr char SC_USER_INGAMEINFO = 12;   //++
+constexpr char SC_DIE = 13;   //++
 
 enum N_TYPE { NT_PEACE, NT_AGRO, NT_PLAYER, NT_FIX, NT_ROAM };
 
@@ -93,6 +94,7 @@ struct SC_LOGIN_INFO_PACKET {
 	int      max_hp;
 	int      exp;
 	int      level;
+	int		damage;
 	short   x, y;
 	char   name[NAME_SIZE];
 };
@@ -103,7 +105,10 @@ struct SC_ADD_OBJECT_PACKET {
 	int      id;
 	short   x, y;
 	char   name[NAME_SIZE];
+	int		 damage;
+	int level;
 	N_TYPE   npc_type;
+	N_TYPE   npc_move_type;
 };
 
 struct SC_REMOVE_OBJECT_PACKET {
@@ -162,6 +167,12 @@ struct SC_USER_INGAMEINFO_PACKET {
 	int    level;
 	int    hp;
 	int    exp;
+};
+
+struct SC_DIE_PACKET {
+	unsigned short size;
+	char   type;
+	int      id;
 };
 
 #pragma pack (pop)
