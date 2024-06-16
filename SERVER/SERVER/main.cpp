@@ -65,7 +65,8 @@ class SESSION {
 public:
 	mutex _s_lock;
 	S_STATE _state;
-	N_TYPE _npc_type;
+	N_TYPE _npc_type;	// NPC의 종류
+	N_TYPE _npc_move_type;	// NPC의 이동 방식
 	atomic_bool	_is_active;		// 주위에 플레이어가 있는가?
 	int _id;
 	SOCKET _socket;
@@ -80,10 +81,13 @@ public:
 	int _npc_move_time;
 	bool _send_chat;
 	int _player;
+	int _damage;	// 공격력
 	int _hp;
 	int _max_hp;
-	int _damage;	
-	chrono::system_clock::time_point m_npc_end_time;
+	int _level;	// 레벨
+	int _exp;	// 경험치
+	//chrono::system_clock::time_point m_npc_end_time;
+	chrono::system_clock::time_point hp_time;
 public:
 	SESSION()
 	{
@@ -96,7 +100,6 @@ public:
 		_npc_move_time = 0;
 		_send_chat = false;
 		_player = -1;
-		m_npc_end_time = chrono::system_clock::now();
 	}
 
 	~SESSION() {}
@@ -131,6 +134,7 @@ public:
 	void send_add_player_packet(int c_id);
 	void send_chat_packet(int c_id, const char* mess);
 	void send_attack_packet(int a_id, int t_id);
+	void send_ingameinfo_packet();
 	void send_remove_player_packet(int c_id)
 	{
 		_vl.lock();
@@ -151,29 +155,6 @@ public:
 
 HANDLE h_iocp;
 array<SESSION, MAX_USER + MAX_NPC> clients;
-
-// NPC 구현 첫번째 방법
-//  NPC클래스를 별도 제작, NPC컨테이너를 따로 생성한다.
-//  장점 : 깔끔하다, 군더더기가 없다.
-//  단점 : 플레이어와 NPC가 따로논다. 똑같은 역할을 수행하는 함수를 여러개씩 중복 작성해야 한다.
-//         예) bool can_see(int from, int to)
-//                 => bool can_see_p2p()
-//				    bool can_see_p2n()
-//					bool can_see_n2n()
-
-// NPC 구현 두번째 방법  <===== 실습에서 사용할 방법.
-//   clients 컨테이너에 NPC도 추가한다.
-//   장점 : 플레이어와 NPC를 동일하게 취급할 수 있어서, 프로그래밍 작성 부하가 줄어든다.
-//   단점 : 사용하지 않는 멤버들로 인한 메모리 낭비.
-
-// NPC 구현 세번째 방법  (실제로 많이 사용되는 방법)
-//   클래스 상속기능을 사용한다.
-//     SESSION은 NPC클래스를 상속받아서 네트워크 관련 기능을 추가한 형태로 정의한다.
-//       clients컨테이너를 objects컨테이너로 변경하고, 컨테이너는 NPC의 pointer를 저장한다.
-//      장점 : 메모리 낭비가 없다, 함수의 중복작성이 필요없다.
-//          (포인터로 관리되므로 player id의 중복사용 방지를 구현하기 쉬워진다 => Data Race 방지를 위한 추가 구현이 필요)
-//      단점 : 포인터가 사용되고, reinterpret_cast가 필요하다. (별로 단점이 안니다).
-
 SOCKET g_s_socket, g_c_socket;
 OVER_EXP g_a_over;
 
@@ -243,6 +224,18 @@ void SESSION::send_attack_packet(int a_id, int t_id)
 	do_send(&packet);
 }
 
+void SESSION::send_ingameinfo_packet()
+{
+	SC_USER_INGAMEINFO_PACKET packet;
+	packet.size = sizeof(SC_USER_INGAMEINFO_PACKET);
+	packet.type = SC_USER_INGAMEINFO;
+	packet.level = _level;
+	packet.hp = _hp;
+	packet.exp = _exp;
+
+	do_send(&packet);
+}
+
 int get_new_client_id()
 {
 	for (int i = 0; i < MAX_USER; ++i) {
@@ -269,9 +262,6 @@ void WakeUpNPC(int npc_id, int waker)
 	timer_queue.push(ev);
 }
 
-	
-
-
 void process_packet(int c_id, char* packet)
 {
 	switch (packet[2]) {
@@ -284,9 +274,17 @@ void process_packet(int c_id, char* packet)
 			clients[c_id].y = rand() % W_HEIGHT;
 			clients[c_id]._state = ST_INGAME;
 			clients[c_id]._npc_type = NT_PLAYER;
-			clients[c_id]._hp = 3;
-			clients[c_id]._max_hp = 3;
+
+			// 나중에 DB에서 읽어온 정보로 초기화할 것
+			clients[c_id]._hp = 10;
+			clients[c_id]._max_hp = 10;
 			clients[c_id]._damage = 1;
+			clients[c_id]._level = 1;
+			clients[c_id]._exp = 100;
+
+			clients[c_id].send_ingameinfo_packet();
+			//cout << "client" << c_id << " lev : " << clients[c_id]._level << " hp : " << clients[c_id]._hp << endl;
+
 
 		}
 		clients[c_id].send_login_info_packet();
@@ -366,7 +364,7 @@ void process_packet(int c_id, char* packet)
 		int y = clients[c_id].y;
 
 		// 나중에 섹터링으로 시야 있는 npc만 검사하는 것으로 바꿀 것
-		for (int i = MAX_USER; i < MAX_USER+MAX_NPC; ++i)
+		for (int i = MAX_USER; i < MAX_USER + MAX_NPC; ++i)
 		{// 플레이어 좌표의 상하좌우에 npc가 있으면 npc의 hp를 감소시킨다.
 			if (clients[i].x == x-1 && clients[i].y == y) 
 			{
@@ -389,17 +387,34 @@ void process_packet(int c_id, char* packet)
 				cout << "npc_id : " << i << " hp : " << clients[i]._hp << endl;
 			}
 
-			if (clients[i]._hp <= 0) {
+			if (clients[i]._hp <= 0 && clients[i]._state == ST_INGAME) {
 				SC_REMOVE_OBJECT_PACKET p;
 				p.id = i;
 				p.size = sizeof(SC_REMOVE_OBJECT_PACKET);
 				p.type = SC_REMOVE_OBJECT;
 				clients[c_id].do_send(&p);
 
+
+				if (clients[i]._npc_type == NT_AGRO)
+					clients[c_id]._exp += clients[i]._level * clients[i]._level * 2 * 2;
+				else if (clients[i]._npc_move_type == NT_ROAM)
+					clients[c_id]._exp += clients[i]._level * clients[i]._level * 2 * 2;
+				else
+					clients[c_id]._exp += clients[i]._level * clients[i]._level * 2;
+
+				for(int i = clients[c_id]._level ; i< 10 ; i++) {
+					if (clients[c_id]._exp >= 100 * pow(2, i - 1)) {
+						clients[c_id]._level = i;
+
+
+					}else break;
+				}
+				clients[c_id].send_ingameinfo_packet();
+				//cout<< "client" << c_id << " lev : " << clients[c_id]._level << " exp : " << clients[c_id]._exp << endl;
+
+
 				clients[i]._state = ST_FREE;
-				//clients[i].m_npc_end_time = chrono::system_clock::now() + chrono::seconds(3);
 				//Wait30sec(i);
-				//cout << "npc_id : " << i << " is dead." << " hp : " << clients[i]._hp << endl;
 			}
 		}
 		break;
@@ -412,6 +427,17 @@ void process_packet(int c_id, char* packet)
 		clients[p->id]._hp = clients[p->id]._max_hp;
 
 		break;
+	}
+
+	case CS_RECOVER:
+	{
+		clients[c_id]._hp += clients[c_id]._hp * 0.1;
+
+		clients[c_id].send_ingameinfo_packet();
+		//cout<< "client" << c_id << " lev : " << clients[c_id]._level << " hp : " << clients[c_id]._hp << endl;
+
+		break;
+
 	}
 
 	}
@@ -621,7 +647,9 @@ void worker_thread(HANDLE h_iocp)
 				}
 			}
 			if (true == keep_alive) {
-				//do_npc_random_move(static_cast<int>(key));
+				if (clients[key]._npc_move_type == NT_ROAM && clients[key]._state == ST_INGAME)
+					do_npc_random_move(static_cast<int>(key));
+
 				TIMER_EVENT ev{ key, chrono::system_clock::now() + 1s, EV_RANDOM_MOVE, 0 };
 				timer_queue.push(ev);
 				{
@@ -734,9 +762,12 @@ int API_Attack(lua_State* L)
 
 	lua_pop(L, 3);
 
-	clients[user_id].send_attack_packet(my_id, user_id);
-	clients[user_id]._hp -= clients[my_id]._damage; 	// 맞은 애 hp 감소
-	cout << "user_id : " << user_id << " hp : " << clients[user_id]._hp << endl;
+	if (clients[my_id]._state == ST_INGAME) {
+		clients[user_id]._hp -= clients[my_id]._damage; 	// 맞은 애 hp 감소
+		clients[user_id].send_attack_packet(my_id, user_id);
+		clients[user_id].send_ingameinfo_packet();
+		//cout << "user_id : " << user_id << " hp : " << clients[user_id]._hp << endl;
+	}
 
 	return 0;
 }
@@ -745,23 +776,29 @@ void InitializeNPC()
 {
 	cout << "NPC intialize begin.\n";
 	//for (int i = MAX_USER; i < MAX_USER + MAX_NPC; ++i) {
-	for (int i = MAX_USER; i < MAX_USER + 10000; ++i) {
+	for (int i = MAX_USER; i < MAX_USER + MAX_NPC; ++i) {
 		clients[i].x = rand() % W_WIDTH;
 		clients[i].y = rand() % W_HEIGHT;
 		clients[i]._id = i;
 		sprintf_s(clients[i]._name, "NPC%d", i);
 		clients[i]._state = ST_INGAME;
 		if (rand() % 2 == 0) {
-			clients[i]._npc_type = NT_PEACE;
 			clients[i]._hp = 3;
 			clients[i]._max_hp = 3;
 			clients[i]._damage = 1;
+			clients[i]._npc_type = NT_PEACE;
+			clients[i]._level = 5;
+			if (rand() % 2 == 0) clients[i]._npc_move_type = NT_FIX;
+			else clients[i]._npc_move_type = NT_ROAM;
 		}
 		else {
 			clients[i]._hp = 5;
 			clients[i]._max_hp = 5;
 			clients[i]._damage = 1;
 			clients[i]._npc_type = NT_AGRO;
+			clients[i]._level = 10;
+			if (rand() % 2 == 0) clients[i]._npc_move_type = NT_FIX;
+			else clients[i]._npc_move_type = NT_ROAM;
 		}
 
 

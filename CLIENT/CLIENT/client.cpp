@@ -9,7 +9,6 @@
 using namespace std;
 using namespace std::chrono;
 
-// 서버가 npc죽었다고 하면 클라가 3초(m_npc_end_time) 세고 서버한테 알려줌. 서버는 신호 받으면 npc 살리라고 클라한테 패킷 보냄. 클라는 패킷 받으면 npc 살림.
 #include "..\..\SERVER\SERVER\protocol.h"
 
 sf::TcpSocket s_socket;
@@ -54,11 +53,15 @@ private:
 	chrono::system_clock::time_point m_mess_end_time;
 	chrono::system_clock::time_point m_attack_end_time;
 	chrono::system_clock::time_point m_npc_end_time;
+	chrono::system_clock::time_point m_recover_time;
 public:
 	int id;
 	int m_x, m_y;
 	char name[NAME_SIZE];
 	char nickname[NAME_SIZE];
+	int level;
+	int hp;
+	int exp;
 	OBJECT(sf::Texture& t, int x, int y, int x2, int y2) {
 		m_showing = false;
 		m_alive = false;
@@ -66,6 +69,7 @@ public:
 		m_sprite.setTextureRect(sf::IntRect(x, y, x2, y2));
 		set_name("NONAME");
 		m_mess_end_time = chrono::system_clock::now();
+		m_recover_time = chrono::system_clock::now() + chrono::seconds(5);
 	}
 	OBJECT() {
 		m_showing = false;
@@ -74,6 +78,17 @@ public:
 	{
 		m_showing = true;
 		m_attack_end_time = chrono::system_clock::now() + chrono::seconds(1);
+	}
+
+	void check_recover() {
+		if (m_recover_time < chrono::system_clock::now()) {
+			CS_RECOVER_PACKET p;
+			p.size = sizeof(CS_RECOVER_PACKET);
+			p.type = CS_RECOVER;
+			send_packet(&p);
+
+			m_recover_time = chrono::system_clock::now() + chrono::seconds(5);
+		}
 	}
 
 	void set_endtime() {
@@ -317,13 +332,13 @@ void ProcessPacket(char* ptr)
 			//players.erase(other_id);
 			players[other_id].hide();
 			players[other_id].set_endtime();
-			cout << "npc" << other_id << "가 죽었습니다.\n";
+			//cout << "npc" << other_id << "가 죽었습니다.\n";
 		}
 		break;
 	}
 	case SC_CHAT:
 	{
-		cout << "SC_CHAT\n";
+		//cout << "SC_CHAT\n";
 		SC_CHAT_PACKET* my_packet = reinterpret_cast<SC_CHAT_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
@@ -352,6 +367,20 @@ void ProcessPacket(char* ptr)
 		//cout << "SC_NPC_WAKED\n";
 		SC_NPC_WAKED_PACKET* my_packet = reinterpret_cast<SC_NPC_WAKED_PACKET*>(ptr);
 		players[my_packet->id].show();
+		break;
+	}
+
+	case SC_USER_INGAMEINFO:
+	{
+		SC_USER_INGAMEINFO_PACKET * my_packet = reinterpret_cast<SC_USER_INGAMEINFO_PACKET*>(ptr);
+		players[g_myid].level = my_packet->level;
+		players[g_myid].hp = my_packet->hp;
+		players[g_myid].exp = my_packet->exp;
+		avatar.level = my_packet->level;
+		avatar.hp = my_packet->hp;
+		avatar.exp = my_packet->exp;
+
+		//cout<< "level: " << players[g_myid].level << " hp: " << players[g_myid].hp << endl;
 		break;
 	}
 
@@ -425,17 +454,32 @@ void client_main()
 		}
 	avatar.draw();
 	P_A_U.attack_draw(); P_A_D.attack_draw(); P_A_L.attack_draw(); P_A_R.attack_draw();
+	avatar.check_recover();
 	//if (is_npc(id)) check_endtime();
 	for (auto& pl : players) {
 		pl.second.draw(); 
 		pl.second.check_endtime();
 	}
-	sf::Text text;
-	text.setFont(g_font);
-	char buf[100];
-	sprintf_s(buf, "(%d, %d)", avatar.m_x, avatar.m_y);
-	text.setString(buf);
-	g_window->draw(text);
+	
+	//sf::Text text;
+	//text.setFont(g_font);
+	//char buf[100];
+	//sprintf_s(buf, "(%d, %d)", avatar.m_x, avatar.m_y);
+	//text.setString(buf);
+	//g_window->draw(text);
+
+	{
+		sf::Text text;
+		text.setFont(g_font);
+		char buf[100];
+		sprintf_s(buf, "level: %d hp: %d exp: %d", players[g_myid].level, players[g_myid].hp, players[g_myid].exp);
+		text.setString(buf);
+		//text.setPosition(0, WINDOW_WIDTH - 1000);
+		g_window->draw(text);
+	}
+
+
+
 }
 
 

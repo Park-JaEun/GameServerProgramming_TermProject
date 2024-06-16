@@ -22,7 +22,8 @@ constexpr char CS_CHAT = 2;
 constexpr char CS_ATTACK = 3;         // 4 방향 공격
 constexpr char CS_TELEPORT = 4;         // RANDOM한 위치로 Teleport, Stress Test할 때 Hot Spot현상을 피하기 위해 구현
 constexpr char CS_LOGOUT = 5;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
-constexpr char CS_NPC_WAKED = 5;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
+constexpr char CS_NPC_WAKED = 6;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
+constexpr char CS_RECOVER = 7;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
 
 constexpr char SC_LOGIN_INFO = 2;
 constexpr char SC_LOGIN_FAIL = 3;
@@ -34,8 +35,9 @@ constexpr char SC_STAT_CHANGE = 8;
 constexpr char SC_LOGIN_OK = 9;   //++
 constexpr char SC_ATTACK = 10;   //++
 constexpr char SC_NPC_WAKED = 11;   //++
+constexpr char SC_USER_INGAMEINFO = 12;   //++
 
-enum N_TYPE { NT_PEACE, NT_AGRO, NT_PLAYER };
+enum N_TYPE { NT_PEACE, NT_AGRO, NT_PLAYER, NT_FIX, NT_ROAM };
 
 #pragma pack (push, 1)
 struct CS_LOGIN_PACKET {
@@ -74,6 +76,11 @@ struct CS_NPC_WAKED_PACKET {
 };
 
 struct CS_ATTACK_PACKET {
+	unsigned short size;
+	char   type;
+};
+
+struct CS_RECOVER_PACKET {
 	unsigned short size;
 	char   type;
 };
@@ -147,6 +154,14 @@ struct SC_NPC_WAKED_PACKET {
 	unsigned short size;
 	char   type;
 	int      id;
+};
+
+struct SC_USER_INGAMEINFO_PACKET {
+	unsigned short size;
+	char   type;
+	int    level;
+	int    hp;
+	int    exp;
 };
 
 #pragma pack (pop)
