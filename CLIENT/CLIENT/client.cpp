@@ -24,9 +24,13 @@ bool is_pc(int object_id)
 {
 	return object_id < MAX_USER;
 }
+bool is_cloud(int object_id)
+{
+	return object_id >= MAX_NPC + MAX_USER;
+}
 bool is_npc(int object_id)
 {
-	return !is_pc(object_id);
+	return !is_pc(object_id) && !is_cloud(object_id);
 }
 void send_packet(void* packet)
 {
@@ -41,6 +45,7 @@ int g_myid;
 
 sf::RenderWindow* g_window;
 sf::Font g_font;
+sf::Sprite cloud_sprite;
 
 class OBJECT {
 private:
@@ -160,6 +165,13 @@ public:
 			m_showing = false;
 		}
 	}
+	//void cloud_draw() {
+	//	if (false == m_showing) return;
+	//	float rx = (m_x - g_left_x) * 65.0f + 1;
+	//	float ry = (m_y - g_top_y) * 65.0f + 1;
+	//	m_sprite.setPosition(rx, ry);
+	//	g_window->draw(m_sprite);
+	//}
 	void set_name(const char str[]) {
 		m_name.setFont(g_font);
 		m_name.setString(str);
@@ -179,10 +191,14 @@ public:
 
 OBJECT avatar;
 unordered_map <int, OBJECT> players;
+//unordered_map <int, OBJECT> clouds;
+//array<OBJECT, MAX_CLOUD> clouds;
+unordered_map< int, POSITION> clouds;
 
 OBJECT blue_tile;
 OBJECT green_tile;
 OBJECT P_A_U, P_A_D, P_A_L, P_A_R;
+OBJECT cloud_pic;
 
 sf::Texture* board;
 sf::Texture* player;
@@ -190,6 +206,7 @@ sf::Texture* pieces_m1;
 sf::Texture* pieces_m2;
 sf::Texture* pieces_m3;
 sf::Texture* p_attack;
+sf::Texture* cloud;
 
 void client_initialize()
 {
@@ -199,10 +216,11 @@ void client_initialize()
 	pieces_m2 = new sf::Texture;
 	pieces_m3 = new sf::Texture;
 	p_attack = new sf::Texture;
+	cloud = new sf::Texture;
 	board->loadFromFile("mymap.bmp");
 	player->loadFromFile("c_idle.png");
 	p_attack->loadFromFile("c_attack.png");
-	//pieces->loadFromFile("cloud.png");	// 장애물 구름
+	cloud->loadFromFile("cloud.png");	// 장애물 구름
 	//pieces->loadFromFile("n_on.png");	// npc
 	pieces_m1->loadFromFile("m1_idle.png");	// lv1 몬스터
 	pieces_m2->loadFromFile("m2_idle.png");	// lv2 몬스터
@@ -218,6 +236,10 @@ void client_initialize()
 	P_A_D = OBJECT{ *p_attack, 0, 0, 64, 64 };
 	P_A_L = OBJECT{ *p_attack, 0, 0, 64, 64 };
 	P_A_R = OBJECT{ *p_attack, 0, 0, 64, 64 };
+	//cloud_pic = OBJECT{ *cloud, 0, 0, 64, 64 };
+
+	cloud_sprite.setTexture(*cloud);
+	cloud_sprite.setTextureRect(sf::IntRect(0, 0, 64, 64));
 
 	avatar.move(4, 4);
 }
@@ -231,6 +253,7 @@ void client_finish()
 	delete pieces_m2;
 	delete pieces_m3;
 	delete p_attack;
+	delete cloud;
 }
 
 void ProcessPacket(char* ptr)
@@ -424,6 +447,29 @@ void ProcessPacket(char* ptr)
 		break;
 
 	}
+	case SC_CLOUD:
+	{
+		SC_CLOUD_PACKET* my_packet = reinterpret_cast<SC_CLOUD_PACKET*>(ptr);
+		if(my_packet->in_see == false)
+			clouds.erase(my_packet->id);
+		else if(my_packet->in_see == true)
+			clouds.emplace(my_packet->id, POSITION{ my_packet->x, my_packet->y });
+
+		// clouds에 my_packet->id와 같은 id가 없으면 추가, 있으면 삭제
+
+		if (clouds.find(my_packet->id) != clouds.end()) // 존재하는 아이디면
+		{
+			if (my_packet->in_see == false)
+				clouds.erase(my_packet->id);
+		}
+		else
+		{
+			if (my_packet->in_see == true)
+				clouds.emplace(my_packet->id, POSITION{ my_packet->x, my_packet->y });
+		}
+
+		break;
+	}
 
 	default:
 		printf("Unknown PACKET type [%d]\n", ptr[2]);
@@ -501,6 +547,13 @@ void client_main()
 		pl.second.draw(); 
 		pl.second.check_endtime();
 	}
+
+	for (auto& cl : clouds) {	// 구름 그리기
+		float rx = (cl.second.x - g_left_x) * 65.0f + 1;
+		float ry = (cl.second.y - g_top_y) * 65.0f + 1;
+		cloud_sprite.setPosition(rx, ry);
+		g_window->draw(cloud_sprite);
+	}
 	
 	//sf::Text text;
 	//text.setFont(g_font);
@@ -509,7 +562,7 @@ void client_main()
 	//text.setString(buf);
 	//g_window->draw(text);
 
-	{
+	{	// UI 
 		sf::Text text;
 		text.setFont(g_font);
 		char buf[100];

@@ -7,6 +7,7 @@ constexpr int BUF_SIZE = 200;   //++
 constexpr int MAX_USER = 10000;
 //constexpr int MAX_NPC = 200000;
 constexpr int MAX_NPC = 10000;
+constexpr int MAX_CLOUD = 50000;
 
 constexpr int W_WIDTH = 2000;
 constexpr int W_HEIGHT = 2000;
@@ -37,6 +38,7 @@ constexpr char SC_ATTACK = 10;   //++
 constexpr char SC_NPC_WAKED = 11;   //++
 constexpr char SC_USER_INGAMEINFO = 12;   //++
 constexpr char SC_DIE = 13;   //++
+constexpr char SC_CLOUD = 14;   //++
 
 enum N_TYPE { NT_PEACE, NT_AGRO, NT_PLAYER, NT_FIX, NT_ROAM };
 
@@ -173,6 +175,18 @@ struct SC_DIE_PACKET {
 	unsigned short size;
 	char   type;
 	int      id;
+};
+
+struct SC_CLOUD_PACKET {
+	unsigned short size;
+	char   type;
+	int id;
+	short   x, y;
+	bool  in_see;
+};
+
+struct POSITION {
+	int x, y;
 };
 
 #pragma pack (pop)

@@ -6,7 +6,9 @@
 #include <vector>
 #include <mutex>
 #include <unordered_set>
+#include <unordered_map>
 #include <concurrent_priority_queue.h>
+#include <random>
 #include "protocol.h"
 
 #include "include/lua.hpp"
@@ -17,6 +19,74 @@
 using namespace std;
 
 constexpr int VIEW_RANGE = 5;
+
+// Position에 대한 해시 함수 구현
+struct PositionHash {
+	std::size_t operator()(const POSITION& pos) const {
+		return std::hash<int>()(pos.x) ^ (std::hash<int>()(pos.y) << 1);
+	}
+};
+
+// Position 비교
+struct PositionEqual {
+	bool operator()(const POSITION& lhs, const POSITION& rhs) const {
+		return lhs.x == rhs.x && lhs.y == rhs.y;
+	}
+};
+
+// 장애물 생성
+//void generateObstacles(std::unordered_set<POSTION, PositionHash, PositionEqual>& obstacles, int count) {
+//	std::random_device rd;
+//	std::mt19937 gen(rd());
+//	std::uniform_int_distribution<> dis(0, 2000);
+//
+//	while (obstacles.size() < count) {
+//		POSTION pos = { dis(gen), dis(gen) };
+//		obstacles.insert(pos);
+//	}
+//}
+void generateObstacles(std::unordered_map<int, POSITION>& obstacles, int count) {
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_int_distribution<> dis(0, 1000);
+
+	for (int id = 0; obstacles.size() < count; ++id) {
+		POSITION pos = { dis(gen), dis(gen) };
+		obstacles[id] = pos;
+	}
+}
+
+// 플레이어 이동 가능 여부 확인 함수
+//bool movePlayer(POSTION& player, int dx, int dy, const std::unordered_set<POSTION, PositionHash, PositionEqual>& obstacles) {
+//	POSTION newPos = { player.x + dx, player.y + dy };
+//
+//	if (obstacles.find(newPos) != obstacles.end()) {
+//		std::cout << "장애물이 있어 이동할 수 없습니다!" << std::endl;
+//		return false;
+//	}
+//
+//	//std::cout << "플레이어가 (" << player.x << ", " << player.y << ")로 이동했습니다." << std::endl;
+//	return true;
+//}
+bool movePlayer(POSITION& player, const std::unordered_map<int, POSITION>& obstacles) {
+	POSITION newPos = { player.x , player.y  };
+
+	// 이동하려는 위치가 장애물인지 확인
+	for (const auto& obstacle : obstacles) {
+		if (obstacle.second.x == newPos.x && obstacle.second.y == newPos.y) {
+			std::cout << "장애물이 있어 이동할 수 없습니다!" << std::endl;
+			return false;
+		}
+	}
+
+	//player = newPos;
+	//std::cout << "플레이어가 (" << player.x << ", " << player.y << ")로 이동했습니다." << std::endl;
+	return true;
+}
+
+
+//std::unordered_set<POSTION, PositionHash, PositionEqual> obstacles;	// 장애물 목록
+std::unordered_map<int, POSITION> obstacles;	// 장애물 목록
 
 enum EVENT_TYPE { EV_RANDOM_MOVE };
 
@@ -180,6 +250,12 @@ bool can_see(int from, int to)
 	return abs(clients[from].y - clients[to].y) <= VIEW_RANGE;
 }
 
+bool can_see_cloud(int c_x, int c_y, int cloud_x, int cloud_y)
+{
+	if (abs(c_x - cloud_x) > VIEW_RANGE) return false;
+	return abs(c_y - cloud_y) <= VIEW_RANGE;
+}
+
 void SESSION::send_move_packet(int c_id)
 {
 	SC_MOVE_OBJECT_PACKET p;
@@ -272,8 +348,12 @@ void WakeUpNPC(int npc_id, int waker)
 	timer_queue.push(ev);
 }
 
+std::unordered_set<int> cloud_view_list;	// 클라별로 구름 뷰 리스트를 가지고 있도록 수정하기
+
 void process_packet(int c_id, char* packet)
 {
+	// 구름 뷰 리스트 생성
+
 	switch (packet[2]) {
 	case CS_LOGIN: {
 		CS_LOGIN_PACKET* p = reinterpret_cast<CS_LOGIN_PACKET*>(packet);
@@ -292,7 +372,6 @@ void process_packet(int c_id, char* packet)
 			clients[c_id]._level = 1;
 			clients[c_id]._exp = 100;
 
-			//clients[c_id].send_ingameinfo_packet();
 			//cout << "client" << c_id << " lev : " << clients[c_id]._level << " hp : " << clients[c_id]._hp << endl;
 
 
@@ -310,6 +389,32 @@ void process_packet(int c_id, char* packet)
 			else WakeUpNPC(pl._id, c_id);
 			clients[c_id].send_add_player_packet(pl._id);
 		}
+
+		int count = 0;
+		//for(auto& obs : obstacles) {	// 장애물 구름 정보 전송
+
+		// 장애물 구름 정보 전송
+		for (int id = 0; id < obstacles.size() ; ++id) {
+			if(!can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y)) continue;
+
+			// cloud_view_list에 추가
+			cloud_view_list.insert(id);
+
+			SC_CLOUD_PACKET p;
+			p.size = sizeof(SC_CLOUD_PACKET);
+			p.type = SC_CLOUD;
+			p.id = id;
+			p.x = obstacles[id].x;
+			p.y = obstacles[id].y;
+			clients[c_id].do_send(&p);
+
+			cout << id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
+
+
+			//cout<< id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
+		}
+
+
 		break;
 	}
 	case CS_MOVE: {
@@ -323,6 +428,9 @@ void process_packet(int c_id, char* packet)
 		case 2: if (x > 0) x--; break;
 		case 3: if (x < W_WIDTH - 1) x++; break;
 		}
+
+		POSITION nextPos = { x, y };
+		if (false == movePlayer(nextPos, obstacles)) break;
 		clients[c_id].x = x;
 		clients[c_id].y = y;
 
@@ -364,8 +472,68 @@ void process_packet(int c_id, char* packet)
 				if (is_pc(pl))
 					clients[pl].send_remove_player_packet(c_id);
 			}
+
+		// 장애물 구름 정보 전송
+		for (int id = 0; id < obstacles.size(); ++id) {
+
+			//if (!can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y)) {
+			//	// cloud_view_list에 있는지 확인
+			//	if (cloud_view_list.count(id)) {
+			//		// cloud_view_list에서 제거
+			//		cloud_view_list.erase(id);
+
+			//		SC_CLOUD_PACKET p;
+			//		p.size = sizeof(SC_CLOUD_PACKET);
+			//		p.type = SC_CLOUD;
+			//		p.in_see = false;
+			//		p.id = id;
+			//		clients[c_id].do_send(&p);
+
+			//		cout << "cloud_view_list에서 제거" << endl;
+			//	}
+
+			//	continue;
+			//}
+			//else 
+			if (can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y))
+			{
+				if (cloud_view_list.find(id) == cloud_view_list.end()) {
+					SC_CLOUD_PACKET p;
+					p.size = sizeof(SC_CLOUD_PACKET);
+					p.type = SC_CLOUD;
+					p.id = id;
+					p.x = obstacles[id].x;
+					p.y = obstacles[id].y;
+					p.in_see = true;
+					clients[c_id].do_send(&p);
+
+					cloud_view_list.insert(id);
+					cout<< id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
+				}
+			}
+			else
+			{
+				if (cloud_view_list.find(id) != cloud_view_list.end()) {
+					// cloud_view_list에서 제거
+					cloud_view_list.erase(id);
+
+					SC_CLOUD_PACKET p;
+					p.size = sizeof(SC_CLOUD_PACKET);
+					p.type = SC_CLOUD;
+					p.in_see = false;
+					p.id = id;
+					clients[c_id].do_send(&p);
+
+					cout << "cloud_view_list에서 제거" << endl;
+				}
+
+
+			}
+
+		}
+
+		break;
 	}
-				break;
 
 	case CS_ATTACK:	{
 		// 플레이어의 위치에서 상하좌우에 npc가 있는지 확인하고 있으면 공격한다.
@@ -843,9 +1011,9 @@ void InitializeCloud()
 	// 장애물인 cloud를 맵에 랜덤으로 배치함.
 	// cloud는 npc와 플레이어가 이동할 수 없도록 하는 장애물임.
 	// cloud는 이동하지 않음.
-
-
-
+	cout << "CLOUD intialize begin.\n";
+	generateObstacles(obstacles, MAX_CLOUD);
+	cout << "CLOUD initialize end.\n";
 }
 
 void do_timer()
