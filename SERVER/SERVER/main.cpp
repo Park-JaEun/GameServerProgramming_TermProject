@@ -81,7 +81,9 @@ public:
 	bool _send_chat;
 	int _player;
 	int _hp;
+	int _max_hp;
 	int _damage;	
+	chrono::system_clock::time_point m_npc_end_time;
 public:
 	SESSION()
 	{
@@ -94,6 +96,7 @@ public:
 		_npc_move_time = 0;
 		_send_chat = false;
 		_player = -1;
+		m_npc_end_time = chrono::system_clock::now();
 	}
 
 	~SESSION() {}
@@ -266,33 +269,8 @@ void WakeUpNPC(int npc_id, int waker)
 	timer_queue.push(ev);
 }
 
-void Wait30sec(int npc_id)
-{
-	// 30초 후에 해당 NPC를 깨운다.
-	// NPC가 깨어나면 주변 플레이어를 확인하고, 시야에 있는 플레이어에게 이동 패킷을 보낸다.
-	cout << "30초 후에 NPC를 깨웁니다." << endl;
-	std::this_thread::sleep_for(std::chrono::seconds(3));
+	
 
-	clients[npc_id]._state = ST_INGAME;
-	SC_ADD_OBJECT_PACKET p;
-	p.id = npc_id;
-	p.size = sizeof(SC_ADD_OBJECT_PACKET);
-	p.type = SC_ADD_OBJECT;
-	p.x = clients[npc_id].x;
-	p.y = clients[npc_id].y;
-	strcpy_s(p.name, clients[npc_id]._name);
-	p.npc_type = clients[npc_id]._npc_type;
-	clients[npc_id]._hp = 3;
-
-	strcpy_s(p.name, clients[npc_id]._name);
-	for (auto& pl : clients) {
-		if (pl._state != ST_INGAME) continue;
-		if (pl._id == npc_id) continue;
-		if (is_npc(pl._id)) continue;
-		if (can_see(npc_id, pl._id))
-			pl.do_send(&p);
-	}
-}
 
 void process_packet(int c_id, char* packet)
 {
@@ -307,6 +285,7 @@ void process_packet(int c_id, char* packet)
 			clients[c_id]._state = ST_INGAME;
 			clients[c_id]._npc_type = NT_PLAYER;
 			clients[c_id]._hp = 3;
+			clients[c_id]._max_hp = 3;
 			clients[c_id]._damage = 1;
 
 		}
@@ -418,15 +397,20 @@ void process_packet(int c_id, char* packet)
 				clients[c_id].do_send(&p);
 
 				clients[i]._state = ST_FREE;
-				Wait30sec(i);
+				//clients[i].m_npc_end_time = chrono::system_clock::now() + chrono::seconds(3);
+				//Wait30sec(i);
 				//cout << "npc_id : " << i << " is dead." << " hp : " << clients[i]._hp << endl;
 			}
 		}
+		break;
+	}
+	case CS_NPC_WAKED:
+	{
+		CS_NPC_WAKED_PACKET* p = reinterpret_cast<CS_NPC_WAKED_PACKET*>(packet);
+		//WakeUpNPC(p->id, c_id);
+		clients[p->id]._state = ST_INGAME;
+		clients[p->id]._hp = clients[p->id]._max_hp;
 
-
-		
-					
-					
 		break;
 	}
 
@@ -770,10 +754,12 @@ void InitializeNPC()
 		if (rand() % 2 == 0) {
 			clients[i]._npc_type = NT_PEACE;
 			clients[i]._hp = 3;
+			clients[i]._max_hp = 3;
 			clients[i]._damage = 1;
 		}
 		else {
-			clients[i]._hp = 3;
+			clients[i]._hp = 5;
+			clients[i]._max_hp = 5;
 			clients[i]._damage = 1;
 			clients[i]._npc_type = NT_AGRO;
 		}

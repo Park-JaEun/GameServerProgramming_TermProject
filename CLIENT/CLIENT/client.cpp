@@ -4,9 +4,12 @@
 #include <unordered_map>
 #include <Windows.h>
 #include <chrono>
+#include <thread>
 
 using namespace std;
+using namespace std::chrono;
 
+// 서버가 npc죽었다고 하면 클라가 3초(m_npc_end_time) 세고 서버한테 알려줌. 서버는 신호 받으면 npc 살리라고 클라한테 패킷 보냄. 클라는 패킷 받으면 npc 살림.
 #include "..\..\SERVER\SERVER\protocol.h"
 
 sf::TcpSocket s_socket;
@@ -18,6 +21,21 @@ constexpr auto TILE_WIDTH = 65;
 constexpr auto WINDOW_WIDTH = SCREEN_WIDTH * TILE_WIDTH;   // size of window
 constexpr auto WINDOW_HEIGHT = SCREEN_WIDTH * TILE_WIDTH;
 
+bool is_pc(int object_id)
+{
+	return object_id < MAX_USER;
+}
+bool is_npc(int object_id)
+{
+	return !is_pc(object_id);
+}
+void send_packet(void* packet)
+{
+	unsigned char* p = reinterpret_cast<unsigned char*>(packet);
+	size_t sent = 0;
+	s_socket.send(packet, p[0], sent);
+}
+
 int g_left_x;
 int g_top_y;
 int g_myid;
@@ -28,11 +46,14 @@ sf::Font g_font;
 class OBJECT {
 private:
 	bool m_showing;
+	bool m_alive;
 	sf::Sprite m_sprite;
 
 	sf::Text m_name;
 	sf::Text m_chat;
 	chrono::system_clock::time_point m_mess_end_time;
+	chrono::system_clock::time_point m_attack_end_time;
+	chrono::system_clock::time_point m_npc_end_time;
 public:
 	int id;
 	int m_x, m_y;
@@ -40,6 +61,7 @@ public:
 	char nickname[NAME_SIZE];
 	OBJECT(sf::Texture& t, int x, int y, int x2, int y2) {
 		m_showing = false;
+		m_alive = false;
 		m_sprite.setTexture(t);
 		m_sprite.setTextureRect(sf::IntRect(x, y, x2, y2));
 		set_name("NONAME");
@@ -51,7 +73,28 @@ public:
 	void show()
 	{
 		m_showing = true;
+		m_attack_end_time = chrono::system_clock::now() + chrono::seconds(1);
 	}
+
+	void set_endtime() {
+		m_npc_end_time = chrono::system_clock::now() + chrono::seconds(3);
+	}
+
+	void check_endtime() {
+		if (true == m_showing) return;
+		if (m_npc_end_time < chrono::system_clock::now()) {
+			show();
+
+			{
+				CS_NPC_WAKED_PACKET p;
+				p.size = sizeof(CS_NPC_WAKED_PACKET);
+				p.type = CS_NPC_WAKED;
+				p.id = id;
+				send_packet(&p);
+			}
+		}
+	}
+
 	void hide()
 	{
 		m_showing = false;
@@ -84,6 +127,19 @@ public:
 			m_chat.setPosition(rx + 32 - size.width / 2, ry - 10);
 			g_window->draw(m_chat);
 		}
+		
+	}
+	void attack_draw() {
+		if (false == m_showing) return;
+		float rx = (m_x - g_left_x) * 65.0f + 1;
+		float ry = (m_y - g_top_y) * 65.0f + 1;
+		m_sprite.setPosition(rx, ry);
+		g_window->draw(m_sprite);
+		//cout << "attack\n";
+		if (m_attack_end_time < chrono::system_clock::now()) {
+			//cout << "attack done\n";
+			m_showing = false;
+		}
 	}
 	void set_name(const char str[]) {
 		m_name.setFont(g_font);
@@ -107,12 +163,14 @@ unordered_map <int, OBJECT> players;
 
 OBJECT blue_tile;
 OBJECT green_tile;
+OBJECT P_A_U, P_A_D, P_A_L, P_A_R;
 
 sf::Texture* board;
 sf::Texture* player;
 sf::Texture* pieces_m1;
 sf::Texture* pieces_m2;
 sf::Texture* pieces_m3;
+sf::Texture* p_attack;
 
 void client_initialize()
 {
@@ -121,8 +179,10 @@ void client_initialize()
 	pieces_m1 = new sf::Texture;
 	pieces_m2 = new sf::Texture;
 	pieces_m3 = new sf::Texture;
+	p_attack = new sf::Texture;
 	board->loadFromFile("mymap.bmp");
 	player->loadFromFile("c_idle.png");
+	p_attack->loadFromFile("c_attack.png");
 	//pieces->loadFromFile("cloud.png");	// 장애물 구름
 	//pieces->loadFromFile("n_on.png");	// npc
 	pieces_m1->loadFromFile("m1_idle.png");	// lv1 몬스터
@@ -135,6 +195,11 @@ void client_initialize()
 	blue_tile = OBJECT{ *board, 0, 0, TILE_WIDTH, TILE_WIDTH };
 	green_tile = OBJECT{ *board, 64, 0, TILE_WIDTH, TILE_WIDTH };
 	avatar = OBJECT{ *player, 0, 0, 64, 64 };
+	P_A_U = OBJECT{ *p_attack, 0, 0, 64, 64 };
+	P_A_D = OBJECT{ *p_attack, 0, 0, 64, 64 };
+	P_A_L = OBJECT{ *p_attack, 0, 0, 64, 64 };
+	P_A_R = OBJECT{ *p_attack, 0, 0, 64, 64 };
+
 	avatar.move(4, 4);
 }
 
@@ -146,6 +211,7 @@ void client_finish()
 	delete pieces_m1;
 	delete pieces_m2;
 	delete pieces_m3;
+	delete p_attack;
 }
 
 void ProcessPacket(char* ptr)
@@ -159,12 +225,18 @@ void ProcessPacket(char* ptr)
 		SC_LOGIN_INFO_PACKET * packet = reinterpret_cast<SC_LOGIN_INFO_PACKET*>(ptr);
 		g_myid = packet->id;
 		avatar.id = g_myid;
+		P_A_U.id = g_myid; 	P_A_D.id = g_myid;	P_A_L.id = g_myid;	P_A_R.id = g_myid;
 		avatar.move(packet->x, packet->y);
+		P_A_U.move(packet->x, packet->y - 1);
+		P_A_D.move(packet->x, packet->y + 1);
+		P_A_L.move(packet->x - 1, packet->y);
+		P_A_R.move(packet->x + 1, packet->y);
 		g_left_x = packet->x - SCREEN_WIDTH / 2;
 		g_top_y = packet->y - SCREEN_HEIGHT / 2;
 		//strncpy_s(avatar.nickname, packet->name, NAME_SIZE);
 		strncpy_s(players[g_myid].nickname, packet->name, NAME_SIZE);
 		avatar.show();
+		//P_A_U.show();
 	}
 	break;
 
@@ -176,6 +248,10 @@ void ProcessPacket(char* ptr)
 		
 		if (id == g_myid) {
 			avatar.move(my_packet->x, my_packet->y);
+			P_A_U.move(my_packet->x, my_packet->y - 1);
+			P_A_D.move(my_packet->x, my_packet->y + 1);
+			P_A_L.move(my_packet->x - 1, my_packet->y);
+			P_A_R.move(my_packet->x + 1, my_packet->y);
 			g_left_x = my_packet->x - SCREEN_WIDTH / 2;
 			g_top_y = my_packet->y - SCREEN_HEIGHT / 2;
 			//players[id].id = id;
@@ -216,6 +292,10 @@ void ProcessPacket(char* ptr)
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
 			avatar.move(my_packet->x, my_packet->y);
+			P_A_U.move(my_packet->x, my_packet->y - 1);
+			P_A_D.move(my_packet->x, my_packet->y + 1);
+			P_A_L.move(my_packet->x - 1, my_packet->y);
+			P_A_R.move(my_packet->x + 1, my_packet->y);
 			g_left_x = my_packet->x - SCREEN_WIDTH/2;
 			g_top_y = my_packet->y - SCREEN_HEIGHT/2;
 		}
@@ -234,7 +314,10 @@ void ProcessPacket(char* ptr)
 			avatar.hide();
 		}
 		else {	// npc이면
-			players.erase(other_id);
+			//players.erase(other_id);
+			players[other_id].hide();
+			players[other_id].set_endtime();
+			cout << "npc" << other_id << "가 죽었습니다.\n";
 		}
 		break;
 	}
@@ -263,6 +346,15 @@ void ProcessPacket(char* ptr)
 		cout << players[my_packet->attack_id].nickname << "가 " << players[my_packet->target_id].nickname << "를 공격했습니다." << endl;
 		break;
 	}
+
+	case SC_NPC_WAKED:
+	{
+		//cout << "SC_NPC_WAKED\n";
+		SC_NPC_WAKED_PACKET* my_packet = reinterpret_cast<SC_NPC_WAKED_PACKET*>(ptr);
+		players[my_packet->id].show();
+		break;
+	}
+
 	default:
 		printf("Unknown PACKET type [%d]\n", ptr[2]);
 	}
@@ -277,7 +369,8 @@ void process_data(char* net_buf, size_t io_byte)
 
 	while (0 != io_byte) {
 		if (0 == in_packet_size) { 
-			in_packet_size = ptr[0]; 
+			//in_packet_size = ptr[0]; 
+			in_packet_size = static_cast<unsigned short>(*ptr);
 			//cout << "in_packet_size: " << in_packet_size << endl;
 		}
 		if (io_byte + saved_packet_size >= in_packet_size) {
@@ -331,7 +424,12 @@ void client_main()
 			}
 		}
 	avatar.draw();
-	for (auto& pl : players) pl.second.draw();
+	P_A_U.attack_draw(); P_A_D.attack_draw(); P_A_L.attack_draw(); P_A_R.attack_draw();
+	//if (is_npc(id)) check_endtime();
+	for (auto& pl : players) {
+		pl.second.draw(); 
+		pl.second.check_endtime();
+	}
 	sf::Text text;
 	text.setFont(g_font);
 	char buf[100];
@@ -340,12 +438,7 @@ void client_main()
 	g_window->draw(text);
 }
 
-void send_packet(void *packet)
-{
-	unsigned char *p = reinterpret_cast<unsigned char *>(packet);
-	size_t sent = 0;
-	s_socket.send(packet, p[0], sent);
-}
+
 
 int main()
 {
@@ -401,10 +494,12 @@ int main()
 					break;
 				case sf::Keyboard::A:
 					CS_ATTACK_PACKET p;
-					p.size = sizeof(p);
+					p.size = sizeof(CS_ATTACK_PACKET);
 					p.type = CS_ATTACK;
 					send_packet(&p);
-					cout << "attack\n";
+
+					P_A_U.show(); P_A_D.show(); P_A_L.show(); P_A_R.show();
+
 					break;
 				}
 				if (-1 != direction) {
