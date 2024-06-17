@@ -176,6 +176,7 @@ public:
 	int _max_hp;
 	int _level;	// 레벨
 	int _exp;	// 경험치
+	POSITION _start_position;
 	//chrono::system_clock::time_point m_npc_end_time;
 	chrono::system_clock::time_point hp_time;
 	std::unordered_set<int> cloud_view_list;	// 구름 뷰 리스트
@@ -421,7 +422,7 @@ void process_packet(int c_id, char* packet)
 			clients[c_id]._damage = 1;
 			clients[c_id]._level = 1;
 			clients[c_id]._exp = 100;
-
+			clients[c_id]._start_position = { 0, 0 };
 			//cout << "client" << c_id << " lev : " << clients[c_id]._level << " hp : " << clients[c_id]._hp << endl;
 		}
 		clients[c_id].send_login_info_packet();
@@ -1094,10 +1095,28 @@ int API_Attack(lua_State* L)
 		clients[user_id]._hp -= clients[my_id]._damage; 	// 맞은 애 hp 감소
 		clients[user_id].send_attack_packet(my_id, user_id);
 		clients[user_id].send_ingameinfo_packet();
-		//cout << "user_id : " << user_id << " hp : " << clients[user_id]._hp << endl;
-	}
 
-	return 0;
+		if (clients[user_id]._hp <= 0)
+		{// 죽은 경우 죽음 패킷을 보내고 경험치를 반으로 줄이고 시작 위치로 이동
+			SC_DIE_PACKET p;
+			p.id = user_id;
+			p.size = sizeof(SC_DIE_PACKET);
+			p.type = SC_DIE;
+			clients[user_id].do_send(&p);
+
+			clients[user_id]._exp = clients[user_id]._exp * 0.5;
+			clients[user_id]._hp = clients[user_id]._max_hp;
+			clients[user_id].x = clients[user_id]._start_position.x;
+			clients[user_id].y = clients[user_id]._start_position.y;
+			clients[user_id].send_ingameinfo_packet();
+			clients[user_id].send_move_packet(user_id);
+			//cout<< "client" << my_id << " lev : " << clients[my_id]._level << " exp : " << clients[my_id]._exp << endl;
+
+		//cout << "user_id : " << user_id << " hp : " << clients[user_id]._hp << endl;
+		}
+
+		return 0;
+	}
 }
 
 void InitializeNPC()

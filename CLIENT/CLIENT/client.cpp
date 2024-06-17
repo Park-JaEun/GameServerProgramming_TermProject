@@ -431,7 +431,9 @@ void ProcessPacket(char* ptr)
 		SC_DIE_PACKET* my_packet = reinterpret_cast<SC_DIE_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
-			avatar.hide();
+			//avatar.hide();
+			avatar.exp = avatar.exp * 0.5;
+
 		}
 		else {	// npc¿Ã∏È
 			//players.erase(other_id);
