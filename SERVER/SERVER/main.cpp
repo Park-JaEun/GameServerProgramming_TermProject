@@ -423,6 +423,8 @@ void process_packet(int c_id, char* packet)
 			clients[c_id]._level = 1;
 			clients[c_id]._exp = 100;
 			clients[c_id]._start_position = { 0, 0 };
+
+			clients[c_id].send_ingameinfo_packet();
 			//cout << "client" << c_id << " lev : " << clients[c_id]._level << " hp : " << clients[c_id]._hp << endl;
 		}
 		clients[c_id].send_login_info_packet();
@@ -442,8 +444,8 @@ void process_packet(int c_id, char* packet)
 		//for(auto& obs : obstacles) 
 
 		// 장애물 구름 정보 전송
-		for (int id = 0; id < obstacles.size() ; ++id) {
-			if(!can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y)) continue;
+		for (int id = 0; id < obstacles.size(); ++id) {
+			if (!can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y)) continue;
 
 			// cloud_view_list에 추가
 			clients[c_id].cloud_view_list.insert(id);
@@ -486,7 +488,7 @@ void process_packet(int c_id, char* packet)
 			if (cl._id == c_id) continue;
 			if (can_see(c_id, cl._id))
 				near_list.insert(cl._id);
-			if(cl._npc_type == NT_AGRO && cl._npc_attack == false && in_npc_see(c_id, cl._id))
+			if (cl._npc_type == NT_AGRO && cl._npc_attack == false && in_npc_see(c_id, cl._id))
 				if (cl._id > MAX_USER) {
 					cl._npc_attack = true;
 					cl._npc_target = c_id;
@@ -559,8 +561,22 @@ void process_packet(int c_id, char* packet)
 		}
 		break;
 	}
+	case CS_CHAT: 	{
+		CS_CHAT_PACKET* p = reinterpret_cast<CS_CHAT_PACKET*>(packet);
+		for (auto& pl : clients) {
+			if (pl._state != ST_INGAME) continue;
+			if(is_pc(pl._id))
+				pl.send_chat_packet(c_id, p->mess);
+		}
 
-	case CS_ATTACK:	{
+
+		//cout<< "client" << c_id << " : " << p->mess << endl;
+		//cout << "ssss" << endl;
+	
+	break;
+	}
+
+	case CS_ATTACK: {
 		// 플레이어의 위치에서 상하좌우에 npc가 있는지 확인하고 있으면 공격한다.
 		// 공격은 npc의 hp를 감소시키고, npc의 hp가 0이 되면 npc를 제거한다.
 		int x = clients[c_id].x;
@@ -569,7 +585,7 @@ void process_packet(int c_id, char* packet)
 		// 나중에 섹터링으로 시야 있는 npc만 검사하는 것으로 바꿀 것
 		for (int i = MAX_USER; i < MAX_USER + MAX_NPC; ++i)
 		{// 플레이어 좌표의 상하좌우에 npc가 있으면 npc의 hp를 감소시킨다.
-			if ( true ==  hit_success(POSITION{ x, y }, POSITION{ clients[i].x ,clients[i].y }) )
+			if (true == hit_success(POSITION{ x, y }, POSITION{ clients[i].x ,clients[i].y }))
 			{
 				clients[i]._hp -= clients[c_id]._damage;
 				clients[c_id].send_attack_packet(c_id, i);
@@ -634,6 +650,7 @@ void process_packet(int c_id, char* packet)
 
 		break;
 	}
+	
 
 	}
 }
@@ -794,7 +811,7 @@ void do_npc_goto_target(int npc_id, int target_id)
 		if (true == can_see(npc._id, obj._id))
 		{
 			old_vl.insert(obj._id);
-		cout<< "player in npc view" << obj._id << endl;
+		//cout<< "player in npc view" << obj._id << endl;
 		//cout<< sizeof(old_vl) << endl;
 		}
 	}

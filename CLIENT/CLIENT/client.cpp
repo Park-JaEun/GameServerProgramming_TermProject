@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <chrono>
 #include <thread>
+#include <deque>
 
 using namespace std;
 using namespace std::chrono;
@@ -46,6 +47,12 @@ int g_myid;
 sf::RenderWindow* g_window;
 sf::Font g_font;
 sf::Sprite cloud_sprite;
+sf::String chat_msg;
+// chat_msg을 저장할 큐
+deque<sf::String> chat_log;
+deque<sf::String> recv_chat_log;
+
+bool chat_input_mode = false;
 
 class OBJECT {
 private:
@@ -385,6 +392,17 @@ void ProcessPacket(char* ptr)
 		else {
 			players[other_id].set_chat(my_packet->mess);
 		}
+
+		//chat_log.push_back(my_packet->mess);
+
+		// 화면 좌측 하단에 my_packet->mess 출력
+		string chat_msg_0 = my_packet->mess;
+		if (recv_chat_log.size() > 5)
+			recv_chat_log.pop_front();
+
+		recv_chat_log.push_back(chat_msg_0);
+
+
 		break;
 	}
 	case SC_ATTACK:
@@ -431,7 +449,7 @@ void ProcessPacket(char* ptr)
 		SC_DIE_PACKET* my_packet = reinterpret_cast<SC_DIE_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
-			//avatar.hide();
+			avatar.hide();
 			avatar.exp = avatar.exp * 0.5;
 
 		}
@@ -558,13 +576,6 @@ void client_main()
 		g_window->draw(cloud_sprite);
 	}
 	
-	//sf::Text text;
-	//text.setFont(g_font);
-	//char buf[100];
-	//sprintf_s(buf, "(%d, %d)", avatar.m_x, avatar.m_y);
-	//text.setString(buf);
-	//g_window->draw(text);
-
 	{	// UI 
 		sf::Text text;
 		text.setFont(g_font);
@@ -576,6 +587,41 @@ void client_main()
 	}
 
 
+	//if(chat_input_mode)
+	{	// 채팅
+		//chat_log.push_back(chat_msg);
+
+		if (chat_msg.getSize() < 5) {
+			chat_log.push_back(chat_msg);
+		}
+		else {
+			chat_log.pop_front();
+			chat_log.push_back(chat_msg);
+		}
+
+		if(!chat_log.empty())
+		for (auto& chat_msg_ : chat_log)
+		{
+			sf::Text text;
+			text.setFont(g_font);
+			text.setString(chat_log.back());
+			text.setPosition(0, WINDOW_HEIGHT - 50);
+			g_window->draw(text);
+		}
+
+		if(!recv_chat_log.empty())
+		{
+			for(int i = 0; i<recv_chat_log.size(); ++i)
+			{
+				sf::Text text;
+				text.setFont(g_font);
+				text.setString(recv_chat_log[i]);
+				text.setPosition(0, WINDOW_HEIGHT - 100 - (20 * (recv_chat_log.size()-i)));
+				g_window->draw(text);
+			}
+			
+		}
+	}
 
 }
 
@@ -616,41 +662,103 @@ int main()
 			if (event.type == sf::Event::Closed)
 				window.close();
 			if (event.type == sf::Event::KeyPressed) {
-				int direction = -1;
-				switch (event.key.code) {
-				case sf::Keyboard::Left:
-					direction = 2;
-					break;
-				case sf::Keyboard::Right:
-					direction = 3;
-					break;
-				case sf::Keyboard::Up:
-					direction = 0;
-					break;
-				case sf::Keyboard::Down:
-					direction = 1;
-					break;
-				case sf::Keyboard::Escape:
-					window.close();
-					break;
-				case sf::Keyboard::A:
-					CS_ATTACK_PACKET p;
-					p.size = sizeof(CS_ATTACK_PACKET);
-					p.type = CS_ATTACK;
-					send_packet(&p);
 
-					P_A_U.show(); P_A_D.show(); P_A_L.show(); P_A_R.show();
+				if (event.key.code == sf::Keyboard::Enter) {
+					if (chat_input_mode == true) {
 
-					break;
+						// 채팅 패킷 전송
+						CS_CHAT_PACKET pat;
+						pat.size = sizeof(CS_CHAT_PACKET);
+						pat.type = CS_CHAT;
+						size_t convertedChars = 0;
+						wcstombs_s(&convertedChars, pat.mess, chat_msg.toWideString().c_str(), CHAT_SIZE - 1);
+						pat.mess[convertedChars - 1] = '\0';
+						//strncpy_s(p.mess, chat_msg.toAnsiString().c_str(), CHAT_SIZE);
+						send_packet(&pat);
+
+						//cout << "ssss" << endl;
+						//CS_RECOVER_PACKET p;
+						//p.size = sizeof(CS_RECOVER_PACKET);
+						//p.type = CS_RECOVER;
+						//send_packet(&p);
+
+
+						chat_msg.clear();
+						//chat_log.clear();
+						chat_input_mode = false;
+					}
+					else {
+						chat_input_mode = true;
+						//chat_msg.clear();
+
+					}
+
 				}
-				if (-1 != direction) {
-					CS_MOVE_PACKET p;
-					p.size = sizeof(p);
-					p.type = CS_MOVE;
-					p.direction = direction;
-					send_packet(&p);
-				}
+				else if (chat_input_mode == false) {
+					int direction = -1;
+					switch (event.key.code) {
+					case sf::Keyboard::Left:
+						direction = 2;
+						break;
+					case sf::Keyboard::Right:
+						direction = 3;
+						break;
+					case sf::Keyboard::Up:
+						direction = 0;
+						break;
+					case sf::Keyboard::Down:
+						direction = 1;
+						break;
+					case sf::Keyboard::Escape:
+						window.close();
+						break;
+					case sf::Keyboard::A:
+						CS_ATTACK_PACKET p;
+						p.size = sizeof(CS_ATTACK_PACKET);
+						p.type = CS_ATTACK;
+						send_packet(&p);
 
+						P_A_U.show(); P_A_D.show(); P_A_L.show(); P_A_R.show();
+
+						break;
+					case sf::Keyboard::Enter:
+						chat_input_mode = true;
+						chat_msg.clear();
+						//chat_log.clear();
+						break;
+					}
+					if (-1 != direction) {
+						CS_MOVE_PACKET p;
+						p.size = sizeof(p);
+						p.type = CS_MOVE;
+						p.direction = direction;
+						send_packet(&p);
+					}
+				}
+			}
+
+			// 채팅 입력
+			if (event.type == sf::Event::TextEntered) {
+				if (chat_input_mode) {
+					if (event.text.unicode == 8) {
+						if (chat_msg.getSize() > 0) {
+							chat_msg.erase(chat_msg.getSize() - 1);
+						}
+					}
+					else {
+						// 0 ~ 127 : ASCII 코드만 입력받고, 엔터키는 입력X
+						if (event.text.unicode < 128 && event.text.unicode != 13) {
+							chat_msg += event.text.unicode;
+						}
+					}
+
+					// esc -> 채팅 모드 종료
+					if (event.text.unicode == 27) {
+						chat_input_mode = false;
+						chat_msg.clear();
+						//chat_log.clear();
+					}
+				}
 			}
 		}
 
