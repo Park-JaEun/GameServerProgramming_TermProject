@@ -158,6 +158,7 @@ public:
 	int _exp;	// 경험치
 	//chrono::system_clock::time_point m_npc_end_time;
 	chrono::system_clock::time_point hp_time;
+	std::unordered_set<int> cloud_view_list;	// 구름 뷰 리스트
 public:
 	SESSION()
 	{
@@ -348,7 +349,7 @@ void WakeUpNPC(int npc_id, int waker)
 	timer_queue.push(ev);
 }
 
-std::unordered_set<int> cloud_view_list;	// 클라별로 구름 뷰 리스트를 가지고 있도록 수정하기
+//std::unordered_set<int> cloud_view_list;	// 클라별로 구름 뷰 리스트를 가지고 있도록 수정하기
 
 void process_packet(int c_id, char* packet)
 {
@@ -398,7 +399,7 @@ void process_packet(int c_id, char* packet)
 			if(!can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y)) continue;
 
 			// cloud_view_list에 추가
-			cloud_view_list.insert(id);
+			clients[c_id].cloud_view_list.insert(id);
 
 			SC_CLOUD_PACKET p;
 			p.size = sizeof(SC_CLOUD_PACKET);
@@ -408,7 +409,7 @@ void process_packet(int c_id, char* packet)
 			p.y = obstacles[id].y;
 			clients[c_id].do_send(&p);
 
-			cout << id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
+			//cout << id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
 
 
 			//cout<< id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
@@ -497,7 +498,7 @@ void process_packet(int c_id, char* packet)
 			//else 
 			if (can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y))
 			{
-				if (cloud_view_list.find(id) == cloud_view_list.end()) {
+				if (clients[c_id].cloud_view_list.find(id) == clients[c_id].cloud_view_list.end()) {
 					SC_CLOUD_PACKET p;
 					p.size = sizeof(SC_CLOUD_PACKET);
 					p.type = SC_CLOUD;
@@ -507,15 +508,15 @@ void process_packet(int c_id, char* packet)
 					p.in_see = true;
 					clients[c_id].do_send(&p);
 
-					cloud_view_list.insert(id);
+					clients[c_id].cloud_view_list.insert(id);
 					cout<< id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
 				}
 			}
 			else
 			{
-				if (cloud_view_list.find(id) != cloud_view_list.end()) {
+				if (clients[c_id].cloud_view_list.find(id) != clients[c_id].cloud_view_list.end()) {
 					// cloud_view_list에서 제거
-					cloud_view_list.erase(id);
+					clients[c_id].cloud_view_list.erase(id);
 
 					SC_CLOUD_PACKET p;
 					p.size = sizeof(SC_CLOUD_PACKET);
