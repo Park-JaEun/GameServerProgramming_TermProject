@@ -400,6 +400,7 @@ void ProcessPacket(char* ptr)
 			cout << players[my_packet->attack_id].nickname << "가 " << players[my_packet->target_id].nickname << "를 공격해 " << players[my_packet->attack_id].damage << "데미지를 입었습니다." << endl;
 		else if (is_pc(my_packet->attack_id) && is_npc(my_packet->target_id))
 			cout << players[my_packet->attack_id].nickname << "가 " << players[my_packet->target_id].nickname << "를 공격해 " << players[my_packet->attack_id].damage << "데미지를 입혔습니다." << endl;
+		//cout<< players[my_packet->attack_id].m_x << " " << players[my_packet->attack_id].m_y << " " << players[my_packet->target_id].m_x << " " << players[my_packet->target_id].m_y << endl;
 
 		break;
 	}
