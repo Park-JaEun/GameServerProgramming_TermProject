@@ -205,15 +205,17 @@ unordered_map< int, POSITION> clouds;
 OBJECT blue_tile;
 OBJECT green_tile;
 OBJECT P_A_U, P_A_D, P_A_L, P_A_R;
+OBJECT P_A_U2, P_A_D2, P_A_L2, P_A_R2;
 OBJECT cloud_pic;
+OBJECT item_pic;
 
 sf::Texture* board;
 sf::Texture* player;
 sf::Texture* pieces_m1;
 sf::Texture* pieces_m2;
-sf::Texture* pieces_m3;
 sf::Texture* p_attack;
 sf::Texture* cloud;
+sf::Texture* item;
 
 void client_initialize()
 {
@@ -221,17 +223,17 @@ void client_initialize()
 	player = new sf::Texture;
 	pieces_m1 = new sf::Texture;
 	pieces_m2 = new sf::Texture;
-	pieces_m3 = new sf::Texture;
 	p_attack = new sf::Texture;
 	cloud = new sf::Texture;
+	item = new sf::Texture;
 	board->loadFromFile("mymap.bmp");
 	player->loadFromFile("c_idle.png");
 	p_attack->loadFromFile("c_attack.png");
 	cloud->loadFromFile("cloud.png");	// 장애물 구름
+	item->loadFromFile("n_on.png");	// 장애물 구름
 	//pieces->loadFromFile("n_on.png");	// npc
 	pieces_m1->loadFromFile("m1_idle.png");	// lv1 몬스터
 	pieces_m2->loadFromFile("m2_idle.png");	// lv2 몬스터
-	pieces_m3->loadFromFile("m_boss_idle.png");		// 보스
 	if (false == g_font.loadFromFile("cour.ttf")) {
 		cout << "Font Loading Error!\n";
 		exit(-1);
@@ -243,8 +245,14 @@ void client_initialize()
 	P_A_D = OBJECT{ *p_attack, 0, 0, 64, 64 };
 	P_A_L = OBJECT{ *p_attack, 0, 0, 64, 64 };
 	P_A_R = OBJECT{ *p_attack, 0, 0, 64, 64 };
+	P_A_U2 = OBJECT{ *p_attack, 0, 0, 64, 64 };
+	P_A_D2 = OBJECT{ *p_attack, 0, 0, 64, 64 };
+	P_A_L2 = OBJECT{ *p_attack, 0, 0, 64, 64 };
+	P_A_R2 = OBJECT{ *p_attack, 0, 0, 64, 64 };
 	//cloud_pic = OBJECT{ *cloud, 0, 0, 64, 64 };
-
+	item_pic = OBJECT{ *item, 0, 0, 64, 64 };
+	item_pic.set_name("ITEM");
+	item_pic.set_name("ITEM");
 	cloud_sprite.setTexture(*cloud);
 	cloud_sprite.setTextureRect(sf::IntRect(0, 0, 64, 64));
 
@@ -258,7 +266,6 @@ void client_finish()
 	delete player;
 	delete pieces_m1;
 	delete pieces_m2;
-	delete pieces_m3;
 	delete p_attack;
 	delete cloud;
 }
@@ -360,6 +367,7 @@ void ProcessPacket(char* ptr)
 			P_A_R.move(my_packet->x + 1, my_packet->y);
 			g_left_x = my_packet->x - SCREEN_WIDTH/2;
 			g_top_y = my_packet->y - SCREEN_HEIGHT/2;
+			item_pic.hide();
 		}
 		else {
 			players[other_id].move(my_packet->x, my_packet->y);
@@ -400,7 +408,7 @@ void ProcessPacket(char* ptr)
 		if (recv_chat_log.size() > 5)
 			recv_chat_log.pop_front();
 
-		recv_chat_log.push_back(chat_msg_0);
+		recv_chat_log.push_back("P" + to_string(other_id) + ":" + chat_msg_0);
 
 
 		break;
@@ -490,6 +498,17 @@ void ProcessPacket(char* ptr)
 
 		break;
 	}
+	case SC_ITEM:
+	{
+		SC_ITEM_PACKET* my_packet = reinterpret_cast<SC_ITEM_PACKET*>(ptr);
+		my_packet->id;
+		item_pic.move(players[my_packet->id].m_x, players[my_packet->id].m_y);
+		
+		item_pic.show();
+
+		cout << "아이템 획득!" << endl;
+		break;
+	}
 
 	default:
 		printf("Unknown PACKET type [%d]\n", ptr[2]);
@@ -561,6 +580,8 @@ void client_main()
 		}
 	avatar.draw();
 	P_A_U.attack_draw(); P_A_D.attack_draw(); P_A_L.attack_draw(); P_A_R.attack_draw();
+	P_A_U2.attack_draw(); P_A_D2.attack_draw(); P_A_L2.attack_draw(); P_A_R2.attack_draw();
+	item_pic.draw();
 	avatar.check_recover();
 	//if (is_npc(id)) check_endtime();
 	for (auto& pl : players) {
@@ -623,7 +644,6 @@ void client_main()
 	}
 
 }
-
 
 
 int main()
@@ -698,9 +718,11 @@ int main()
 					switch (event.key.code) {
 					case sf::Keyboard::Left:
 						direction = 2;
+						
 						break;
 					case sf::Keyboard::Right:
 						direction = 3;
+
 						break;
 					case sf::Keyboard::Up:
 						direction = 0;
@@ -712,6 +734,7 @@ int main()
 						window.close();
 						break;
 					case sf::Keyboard::A:
+					{
 						CS_ATTACK_PACKET p;
 						p.size = sizeof(CS_ATTACK_PACKET);
 						p.type = CS_ATTACK;
@@ -720,6 +743,35 @@ int main()
 						P_A_U.show(); P_A_D.show(); P_A_L.show(); P_A_R.show();
 
 						break;
+					}
+					case sf::Keyboard::D:
+					{
+						CS_ATTACK_D_PACKET p;
+						p.size = sizeof(CS_ATTACK_D_PACKET);
+						p.type = CS_ATTACK_D;
+						send_packet(&p);
+
+						P_A_U.show(); P_A_D.show(); P_A_L.show(); P_A_R.show();
+
+						break;
+					}
+					case sf::Keyboard::S:
+					{
+						CS_ATTACK_A_PACKET p;
+						p.size = sizeof(CS_ATTACK_A_PACKET);
+						p.type = CS_ATTACK_A;
+						send_packet(&p);
+
+						P_A_U.show(); P_A_D.show(); P_A_L.show(); P_A_R.show();
+						P_A_U2.move(avatar.m_x, avatar.m_y - 2);
+						P_A_D2.move(avatar.m_x, avatar.m_y + 2);
+						P_A_L2.move(avatar.m_x - 2, avatar.m_y);
+						P_A_R2.move(avatar.m_x + 2, avatar.m_y);
+						P_A_U2.show(); P_A_D2.show(); P_A_L2.show(); P_A_R2.show();
+
+						break;
+					}
+
 					case sf::Keyboard::Enter:
 						chat_input_mode = true;
 						chat_msg.clear();
@@ -727,6 +779,7 @@ int main()
 						break;
 					}
 					if (-1 != direction) {
+
 						CS_MOVE_PACKET p;
 						p.size = sizeof(p);
 						p.type = CS_MOVE;

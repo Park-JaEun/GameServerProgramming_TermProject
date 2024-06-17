@@ -5,9 +5,9 @@ constexpr int CHAT_SIZE = 100;
 constexpr int BUF_SIZE = 200;   //++
 
 constexpr int MAX_USER = 10000;
-//constexpr int MAX_NPC = 200000;
-constexpr int MAX_NPC = 10000;
-constexpr int MAX_CLOUD = 50000;
+constexpr int MAX_NPC = 200000;
+//constexpr int MAX_NPC = 10000;
+constexpr int MAX_CLOUD = 20000;
 
 constexpr int W_WIDTH = 2000;
 constexpr int W_HEIGHT = 2000;
@@ -25,6 +25,8 @@ constexpr char CS_TELEPORT = 4;         // RANDOM한 위치로 Teleport, Stress Test
 constexpr char CS_LOGOUT = 5;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
 constexpr char CS_NPC_WAKED = 6;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
 constexpr char CS_RECOVER = 7;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
+constexpr char CS_ATTACK_A = 8;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
+constexpr char CS_ATTACK_D = 9;         // 클라이언트에서 정상적으로 접속을 종료하는 패킷
 
 constexpr char SC_LOGIN_INFO = 2;
 constexpr char SC_LOGIN_FAIL = 3;
@@ -39,6 +41,7 @@ constexpr char SC_NPC_WAKED = 11;   //++
 constexpr char SC_USER_INGAMEINFO = 12;   //++
 constexpr char SC_DIE = 13;   //++
 constexpr char SC_CLOUD = 14;   //++
+constexpr char SC_ITEM = 15;   //++
 
 enum N_TYPE { NT_PEACE, NT_AGRO, NT_PLAYER, NT_FIX, NT_ROAM };
 
@@ -84,6 +87,16 @@ struct CS_ATTACK_PACKET {
 };
 
 struct CS_RECOVER_PACKET {
+	unsigned short size;
+	char   type;
+};
+
+struct CS_ATTACK_A_PACKET {
+	unsigned short size;
+	char   type;
+};
+
+struct CS_ATTACK_D_PACKET {
 	unsigned short size;
 	char   type;
 };
@@ -183,6 +196,12 @@ struct SC_CLOUD_PACKET {
 	int id;
 	short   x, y;
 	bool  in_see;
+};
+
+struct SC_ITEM_PACKET {
+	unsigned short size;
+	char   type;
+	int id;
 };
 
 struct POSITION {
