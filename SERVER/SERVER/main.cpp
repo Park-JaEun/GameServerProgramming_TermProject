@@ -275,6 +275,12 @@ bool can_see(int from, int to)
 	return abs(clients[from].y - clients[to].y) <= VIEW_RANGE;
 }
 
+bool in_npc_see(int from, int to)
+{
+	if (abs(clients[from].x - clients[to].x) > NPC_VIEW_RANGE) return false;
+	return abs(clients[from].y - clients[to].y) <= NPC_VIEW_RANGE;
+}
+
 bool can_see_cloud(int c_x, int c_y, int cloud_x, int cloud_y)
 {
 	if (abs(c_x - cloud_x) > VIEW_RANGE) return false;
@@ -396,8 +402,6 @@ void WakeUpNPC(int npc_id, int waker)
 
 void process_packet(int c_id, char* packet)
 {
-	// 구름 뷰 리스트 생성
-
 	switch (packet[2]) {
 	case CS_LOGIN: {
 		CS_LOGIN_PACKET* p = reinterpret_cast<CS_LOGIN_PACKET*>(packet);
@@ -481,6 +485,12 @@ void process_packet(int c_id, char* packet)
 			if (cl._id == c_id) continue;
 			if (can_see(c_id, cl._id))
 				near_list.insert(cl._id);
+			if(cl._npc_type == NT_AGRO && cl._npc_attack == false && in_npc_see(c_id, cl._id))
+				if (cl._id > MAX_USER) {
+					cl._npc_attack = true;
+					cl._npc_target = c_id;
+				}
+
 		}
 
 		clients[c_id].send_move_packet(c_id);
@@ -513,28 +523,6 @@ void process_packet(int c_id, char* packet)
 
 		// 장애물 구름 정보 전송
 		for (int id = 0; id < obstacles.size(); ++id) {
-
-			//if (!can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y)) {
-			//	// cloud_view_list에 있는지 확인
-			//	if (cloud_view_list.count(id)) {
-			//		// cloud_view_list에서 제거
-			//		cloud_view_list.erase(id);
-
-			//		SC_CLOUD_PACKET p;
-			//		p.size = sizeof(SC_CLOUD_PACKET);
-			//		p.type = SC_CLOUD;
-			//		p.in_see = false;
-			//		p.id = id;
-			//		clients[c_id].do_send(&p);
-
-			//		cout << "cloud_view_list에서 제거" << endl;
-			//	}
-
-			//	continue;
-			//}
-			//else 
-
-
 			if (can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y))	// 시야에 들어오는 거리이면
 			{
 				if (clients[c_id].cloud_view_list.find(id) == clients[c_id].cloud_view_list.end()) // cloud_view_list에 없으면
@@ -746,13 +734,20 @@ void do_npc_random_move(int npc_id)
 	npc.x = x;
 	npc.y = y;
 
-
 	unordered_set<int> new_vl;
 	for (auto& obj : clients) {	// 보틀넥임. 섹터링으로 최적화해야 함.
 		if (ST_INGAME != obj._state) continue;
 		if (true == is_npc(obj._id)) continue;
 		if (true == can_see(npc._id, obj._id))
+		{
 			new_vl.insert(obj._id);
+
+			if (npc._npc_type == NT_AGRO && npc._npc_attack == false && in_npc_see(obj._id, npc._id))
+			{
+				npc._npc_attack = true;
+				npc._npc_target = obj._id;
+			}
+		}
 	}
 
 	for (auto pl : new_vl) {
@@ -970,7 +965,7 @@ void worker_thread(HANDLE h_iocp)
 
 				if (clients[key]._npc_attack == true)	// 공격 대상 있으면
 				{
-					if (clients[key]._npc_type == NT_PEACE && clients[key]._state == ST_INGAME)
+					if (clients[key]._state == ST_INGAME)
 						do_npc_goto_target(static_cast<int>(key), clients[key]._npc_target);	// 공격 대상으로 이동
 
 					//cout << clients[key]._id <<" npc go to target " << clients[key]._npc_target << endl;
@@ -1120,20 +1115,20 @@ void InitializeNPC()
 			clients[i]._damage = 1;
 			clients[i]._npc_type = NT_PEACE;
 			clients[i]._level = 5;
-			//if (rand() % 2 == 0) clients[i]._npc_move_type = NT_FIX;
-			//else clients[i]._npc_move_type = NT_ROAM;
-			clients[i]._npc_move_type = NT_FIX;
+			if (rand() % 2 == 0) clients[i]._npc_move_type = NT_FIX;
+			else clients[i]._npc_move_type = NT_ROAM;
+			//clients[i]._npc_move_type = NT_FIX;
 		}
 		else {
 			clients[i]._hp = 5;
 			clients[i]._max_hp = 5;
 			clients[i]._damage = 1;
-			//clients[i]._npc_type = NT_AGRO;
-			clients[i]._npc_type = NT_PEACE;
+			clients[i]._npc_type = NT_AGRO;
+			//clients[i]._npc_type = NT_PEACE;
 			clients[i]._level = 10;
-			//if (rand() % 2 == 0) clients[i]._npc_move_type = NT_FIX;
-			//else clients[i]._npc_move_type = NT_ROAM;
-			clients[i]._npc_move_type = NT_FIX;
+			if (rand() % 2 == 0) clients[i]._npc_move_type = NT_FIX;
+			else clients[i]._npc_move_type = NT_ROAM;
+			//clients[i]._npc_move_type = NT_FIX;
 		}
 
 

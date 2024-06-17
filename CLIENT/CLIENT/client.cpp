@@ -321,9 +321,9 @@ void ProcessPacket(char* ptr)
 		}
 		else {
 			//players[id] = OBJECT{ *pieces, 0, 0, 128, 128 };
-			if (my_packet->npc_type == NT_PEACE)
+			if (my_packet->npc_type == NT_PEACE)	// 니모
 				players[id] = OBJECT{ *pieces_m1, 0, 0, 64, 64 };
-			else
+			else if(my_packet->npc_type == NT_AGRO)	// 백설
 				players[id] = OBJECT{ *pieces_m2, 0, 0, 64, 64 };
 			
 			players[id].id = id;
