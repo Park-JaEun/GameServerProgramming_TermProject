@@ -68,13 +68,13 @@ void generateObstacles(std::unordered_map<int, POSITION>& obstacles, int count) 
 //	//std::cout << "플레이어가 (" << player.x << ", " << player.y << ")로 이동했습니다." << std::endl;
 //	return true;
 //}
-bool movePlayer(POSITION& player, const std::unordered_map<int, POSITION>& obstacles) {
+bool movePossible(POSITION& player, const std::unordered_map<int, POSITION>& obstacles) {
 	POSITION newPos = { player.x , player.y  };
 
 	// 이동하려는 위치가 장애물인지 확인
 	for (const auto& obstacle : obstacles) {
 		if (obstacle.second.x == newPos.x && obstacle.second.y == newPos.y) {
-			std::cout << "장애물이 있어 이동할 수 없습니다!" << std::endl;
+			//std::cout << "장애물이 있어 이동할 수 없습니다!" << std::endl;
 			return false;
 		}
 	}
@@ -361,12 +361,14 @@ void process_packet(int c_id, char* packet)
 		strcpy_s(clients[c_id]._name, p->name);
 		{
 			lock_guard<mutex> ll{ clients[c_id]._s_lock };
-			clients[c_id].x = rand() % W_WIDTH;
-			clients[c_id].y = rand() % W_HEIGHT;
 			clients[c_id]._state = ST_INGAME;
 			clients[c_id]._npc_type = NT_PLAYER;
 
 			// 나중에 DB에서 읽어온 정보로 초기화할 것
+			//clients[c_id].x = rand() % W_WIDTH;
+			//clients[c_id].y = rand() % W_HEIGHT;
+			clients[c_id].x = 0;
+			clients[c_id].y = 0;
 			clients[c_id]._hp = 10;
 			clients[c_id]._max_hp = 10;
 			clients[c_id]._damage = 1;
@@ -431,7 +433,7 @@ void process_packet(int c_id, char* packet)
 		}
 
 		POSITION nextPos = { x, y };
-		if (false == movePlayer(nextPos, obstacles)) break;
+		if (false == movePossible(nextPos, obstacles)) break;
 		clients[c_id].x = x;
 		clients[c_id].y = y;
 
@@ -496,6 +498,8 @@ void process_packet(int c_id, char* packet)
 			//	continue;
 			//}
 			//else 
+
+
 			if (can_see_cloud(clients[c_id].x, clients[c_id].y, obstacles[id].x, obstacles[id].y))
 			{
 				if (clients[c_id].cloud_view_list.find(id) == clients[c_id].cloud_view_list.end()) {
@@ -509,7 +513,7 @@ void process_packet(int c_id, char* packet)
 					clients[c_id].do_send(&p);
 
 					clients[c_id].cloud_view_list.insert(id);
-					cout<< id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
+					//cout<< id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
 				}
 			}
 			else
@@ -525,7 +529,7 @@ void process_packet(int c_id, char* packet)
 					p.id = id;
 					clients[c_id].do_send(&p);
 
-					cout << "cloud_view_list에서 제거" << endl;
+					//cout << "cloud_view_list에서 제거" << endl;
 				}
 
 
@@ -663,11 +667,14 @@ void do_npc_random_move(int npc_id)
 
 	int x = npc.x;
 	int y = npc.y;
+	bool is_active = true;
 		// 각 방향에 장애물이 없는지 체크하고 이동해야 함.
 	switch (rand() % 4) {
 	case 0: 
 		if (x < (W_WIDTH - 1)) 	{
 			x++; 
+			POSITION nextPos = { x, y };
+			if (false == movePossible(nextPos, obstacles)) return; // break;
 			if (clients[npc_id]._send_chat == true) {
 				clients[npc_id]._npc_move_time++;
 
@@ -680,6 +687,8 @@ void do_npc_random_move(int npc_id)
 	case 1: 
 		if (x > 0)	{
 			x--;
+			POSITION nextPos = { x, y };
+			if (false == movePossible(nextPos, obstacles)) return; // break;
 			if (clients[npc_id]._send_chat == true) {
 				clients[npc_id]._npc_move_time++;
 
@@ -692,6 +701,8 @@ void do_npc_random_move(int npc_id)
 	case 2: 
 		if (y < (W_HEIGHT - 1))	{
 			y++;
+			POSITION nextPos = { x, y };
+			if (false == movePossible(nextPos, obstacles)) return; // break;
 			if (clients[npc_id]._send_chat == true) {
 				clients[npc_id]._npc_move_time++;
 
@@ -704,6 +715,8 @@ void do_npc_random_move(int npc_id)
 	case 3:
 		if (y > 0)	{
 			y--;
+			POSITION nextPos = { x, y };
+			if (false == movePossible(nextPos, obstacles)) return; // break;
 			if (clients[npc_id]._send_chat == true) {
 				clients[npc_id]._npc_move_time++;
 
