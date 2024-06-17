@@ -449,9 +449,8 @@ void ProcessPacket(char* ptr)
 		SC_DIE_PACKET* my_packet = reinterpret_cast<SC_DIE_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
-			avatar.hide();
+			//avatar.hide();
 			avatar.exp = avatar.exp * 0.5;
-
 		}
 		else {	// npc이면
 			//players.erase(other_id);
@@ -471,10 +470,10 @@ void ProcessPacket(char* ptr)
 	case SC_CLOUD:
 	{
 		SC_CLOUD_PACKET* my_packet = reinterpret_cast<SC_CLOUD_PACKET*>(ptr);
-		if(my_packet->in_see == false)
-			clouds.erase(my_packet->id);
-		else if(my_packet->in_see == true)
-			clouds.emplace(my_packet->id, POSITION{ my_packet->x, my_packet->y });
+		//if(my_packet->in_see == false)
+		//	clouds.erase(my_packet->id);
+		//else if(my_packet->in_see == true)
+		//	clouds.emplace(my_packet->id, POSITION{ my_packet->x, my_packet->y });
 
 		// clouds에 my_packet->id와 같은 id가 없으면 추가, 있으면 삭제
 

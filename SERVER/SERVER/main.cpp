@@ -107,7 +107,7 @@ bool isObstacle(int x, int y) {
 	return false;
 }
 
-enum EVENT_TYPE { EV_RANDOM_MOVE };
+enum EVENT_TYPE { EV_RANDOM_MOVE, EV_MOVE_TARGET};
 
 struct TIMER_EVENT {
 	int obj_id;
@@ -413,10 +413,10 @@ void process_packet(int c_id, char* packet)
 			clients[c_id]._npc_type = NT_PLAYER;
 
 			// 나중에 DB에서 읽어온 정보로 초기화할 것
-			//clients[c_id].x = rand() % W_WIDTH;
-			//clients[c_id].y = rand() % W_HEIGHT;
-			clients[c_id].x = 0;
-			clients[c_id].y = 0;
+			clients[c_id].x = rand() % W_WIDTH;
+			clients[c_id].y = rand() % W_HEIGHT;
+			//clients[c_id].x = 0;
+			//clients[c_id].y = 0;
 			clients[c_id]._hp = 10;
 			clients[c_id]._max_hp = 10;
 			clients[c_id]._damage = 1;
@@ -456,6 +456,7 @@ void process_packet(int c_id, char* packet)
 			p.id = id;
 			p.x = obstacles[id].x;
 			p.y = obstacles[id].y;
+			p.in_see = true;
 			clients[c_id].do_send(&p);
 
 			//cout<< id << " " << obstacles[id].x << " " << obstacles[id].y << endl;
@@ -493,7 +494,6 @@ void process_packet(int c_id, char* packet)
 					cl._npc_attack = true;
 					cl._npc_target = c_id;
 				}
-
 		}
 
 		clients[c_id].send_move_packet(c_id);
@@ -983,21 +983,30 @@ void worker_thread(HANDLE h_iocp)
 
 				if (clients[key]._npc_attack == true)	// 공격 대상 있으면
 				{
-					if (clients[key]._state == ST_INGAME)
+					if (clients[key]._state == ST_INGAME) {
 						do_npc_goto_target(static_cast<int>(key), clients[key]._npc_target);	// 공격 대상으로 이동
 
-					//cout << clients[key]._id <<" npc go to target " << clients[key]._npc_target << endl;
+						//cout << clients[key]._id <<" npc go to target " << clients[key]._npc_target << endl;
 
+						TIMER_EVENT ev{ key, chrono::system_clock::now() + 1s, EV_MOVE_TARGET, 0 };
+						timer_queue.push(ev);
+					}
 
 				}
 				else	// 공격 대상 없으면 기본 움직임
 				{
-					if (clients[key]._npc_move_type == NT_ROAM && clients[key]._state == ST_INGAME)
+					if (clients[key]._npc_move_type == NT_ROAM && clients[key]._state == ST_INGAME) {
 						do_npc_random_move(static_cast<int>(key));
+
+						TIMER_EVENT ev{ key, chrono::system_clock::now() + 1s, EV_RANDOM_MOVE, 0 };
+						timer_queue.push(ev);
+					
+					}
+
 				}
 
-				TIMER_EVENT ev{ key, chrono::system_clock::now() + 1s, EV_RANDOM_MOVE, 0 };
-				timer_queue.push(ev);
+				//TIMER_EVENT ev{ key, chrono::system_clock::now() + 1s, EV_RANDOM_MOVE, 0 };
+				//timer_queue.push(ev);
 				{
 					clients[key]._ll.lock();
 					auto L = clients[key]._L;
@@ -1211,11 +1220,21 @@ void do_timer()
 			}
 			switch (ev.event_id) {
 			case EV_RANDOM_MOVE:
+			{
 				OVER_EXP* ov = new OVER_EXP;
 				ov->_comp_type = OP_NPC_MOVE;
 				ov->_ai_target_obj = clients[ev.obj_id]._player;
 				PostQueuedCompletionStatus(h_iocp, 1, ev.obj_id, &ov->_over);
 				break;
+			}
+			case EV_MOVE_TARGET:
+			{
+				OVER_EXP* ov = new OVER_EXP;
+				ov->_comp_type = OP_NPC_MOVE;
+				ov->_ai_target_obj = clients[ev.obj_id]._player;
+				PostQueuedCompletionStatus(h_iocp, 1, ev.obj_id, &ov->_over);
+				break;
+			}
 			}
 			continue;		// 즉시 다음 작업 꺼내기
 		}

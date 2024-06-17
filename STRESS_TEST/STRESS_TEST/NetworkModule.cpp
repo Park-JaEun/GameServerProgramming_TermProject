@@ -126,7 +126,7 @@ void SendPacket(int cl, void* packet)
 
 void ProcessPacket(int ci, unsigned char packet[])
 {
-	switch (packet[1]) {
+	switch (packet[2]) {
 	case SC_MOVE_OBJECT: {
 		SC_MOVE_OBJECT_PACKET* move_packet = reinterpret_cast<SC_MOVE_OBJECT_PACKET*>(packet);
 		if (move_packet->id < MAX_CLIENTS) {
@@ -145,7 +145,7 @@ void ProcessPacket(int ci, unsigned char packet[])
 			}
 		}
 	}
-					   break;
+	 break;
 	case SC_ADD_OBJECT: break;
 	case SC_REMOVE_OBJECT: break;
 	case SC_CHAT: break;
@@ -166,6 +166,14 @@ void ProcessPacket(int ci, unsigned char packet[])
 		//SendPacket(my_id, &t_packet);
 	}
 	break;
+	case SC_USER_INGAMEINFO: 		break;
+	case SC_CLOUD: break;
+	case SC_ATTACK: break;
+	case SC_LOGIN_FAIL: break;
+	case SC_STAT_CHANGE: break;
+	case SC_LOGIN_OK: break;
+	case SC_NPC_WAKED: break;
+	case SC_DIE: break;
 	default: MessageBox(hWnd, L"Unknown Packet Type", L"ERROR", 0);
 		while (true);
 	}
