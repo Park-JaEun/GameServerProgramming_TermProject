@@ -5,9 +5,9 @@ constexpr int CHAT_SIZE = 100;
 constexpr int BUF_SIZE = 200;   //++
 
 constexpr int MAX_USER = 10000;
-constexpr int MAX_NPC = 200000;
+constexpr int MAX_NPC = 100000;
 //constexpr int MAX_NPC = 10000;
-constexpr int MAX_CLOUD = 20000;
+constexpr int MAX_CLOUD = 100000;
 
 constexpr int W_WIDTH = 2000;
 constexpr int W_HEIGHT = 2000;

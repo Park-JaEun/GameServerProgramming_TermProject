@@ -84,23 +84,23 @@ void generateObstacles(std::unordered_map<int, POSITION>& obstacles, int count) 
 std::unordered_map<int, POSITION> obstacles;	// 장애물 목록
 
 // 플레이어 이동 가능 여부 확인 함수
-bool movePossible(POSITION& player, std::unordered_set<int> list) {
+bool movePossible(POSITION& player, const std::unordered_map<int, POSITION>& obstacles) {
 	POSITION newPos = { player.x , player.y  };
 
 	// 이동하려는 위치가 장애물인지 확인
-	//for (const auto& obstacle : obstacles) {
-	//	if (obstacle.second.x == newPos.x && obstacle.second.y == newPos.y) {
-	//		//std::cout << "장애물이 있어 이동할 수 없습니다!" << std::endl;
-	//		return false;
-	//	}
-	//}
-
-	for(auto& id : list)
-	{
-		if (obstacles[id].x == newPos.x && obstacles[id].y == newPos.y) {
+	for (const auto& obstacle : obstacles) {
+		if (obstacle.second.x == newPos.x && obstacle.second.y == newPos.y) {
+			//std::cout << "장애물이 있어 이동할 수 없습니다!" << std::endl;
 			return false;
 		}
 	}
+
+	//for(auto& id : list)
+	//{
+	//	if (obstacles[id].x == newPos.x && obstacles[id].y == newPos.y) {
+	//		return false;
+	//	}
+	//}
 
 	//player = newPos;
 	//std::cout << "플레이어가 (" << player.x << ", " << player.y << ")로 이동했습니다." << std::endl;
@@ -470,7 +470,7 @@ void process_packet(int c_id, char* packet)
 			clients[c_id]._damage = 1;
 			clients[c_id]._level = 1;
 			clients[c_id]._exp = 100;
-			clients[c_id]._start_position = { 0, 0 };
+			clients[c_id]._start_position = { clients[c_id].x, clients[c_id].y };
 
 			clients[c_id].send_ingameinfo_packet();
 			//cout << "client" << c_id << " lev : " << clients[c_id]._level << " hp : " << clients[c_id]._hp << endl;
@@ -527,7 +527,7 @@ void process_packet(int c_id, char* packet)
 			}
 
 			POSITION nextPos = { x, y };
-			if (false == movePossible(nextPos, clients[c_id].cloud_view_list)) break;
+			if (false == movePossible(nextPos, obstacles)) break;
 			clients[c_id].x = x;
 			clients[c_id].y = y;
 
@@ -658,7 +658,13 @@ void process_packet(int c_id, char* packet)
 						p.id = i;
 						p.size = sizeof(SC_DIE_PACKET);
 						p.type = SC_DIE;
-						clients[c_id].do_send(&p);
+						for(auto& pl : clients)
+						{
+							if(pl._state != ST_INGAME) continue;
+							if(is_pc(pl._id))
+								pl.do_send(&p);
+						}
+						//clients[c_id].do_send(&p);
 
 
 						if (clients[i]._npc_type == NT_AGRO)
@@ -882,7 +888,7 @@ void do_npc_random_move(int npc_id)
 		if (x < (W_WIDTH - 1)) 	{
 			x++; 
 			POSITION nextPos = { x, y };
-			if (false == movePossible(nextPos, clients[npc_id].cloud_view_list)) return; // break;
+			if (false == movePossible(nextPos, obstacles)) return; // break;
 			if (clients[npc_id]._send_chat == true) {
 				clients[npc_id]._npc_move_time++;
 
@@ -896,7 +902,7 @@ void do_npc_random_move(int npc_id)
 		if (x > 0)	{
 			x--;
 			POSITION nextPos = { x, y };
-			if (false == movePossible(nextPos, clients[npc_id].cloud_view_list)) return; // break;
+			if (false == movePossible(nextPos, obstacles)) return; // break;
 			if (clients[npc_id]._send_chat == true) {
 				clients[npc_id]._npc_move_time++;
 
@@ -910,7 +916,7 @@ void do_npc_random_move(int npc_id)
 		if (y < (W_HEIGHT - 1))	{
 			y++;
 			POSITION nextPos = { x, y };
-			if (false == movePossible(nextPos, clients[npc_id].cloud_view_list)) return; // break;
+			if (false == movePossible(nextPos, obstacles)) return; // break;
 			if (clients[npc_id]._send_chat == true) {
 				clients[npc_id]._npc_move_time++;
 
@@ -924,7 +930,7 @@ void do_npc_random_move(int npc_id)
 		if (y > 0)	{
 			y--;
 			POSITION nextPos = { x, y };
-			if (false == movePossible(nextPos, clients[npc_id].cloud_view_list)) return; // break;
+			if (false == movePossible(nextPos, obstacles)) return; // break;
 			if (clients[npc_id]._send_chat == true) {
 				clients[npc_id]._npc_move_time++;
 
@@ -1191,8 +1197,8 @@ void worker_thread(HANDLE h_iocp)
 
 				}
 
-				//TIMER_EVENT ev{ key, chrono::system_clock::now() + 1s, EV_RANDOM_MOVE, 0 };
-				//timer_queue.push(ev);
+				TIMER_EVENT ev{ key, chrono::system_clock::now() + 1s, EV_RANDOM_MOVE, 0 };
+				timer_queue.push(ev);
 				{
 					clients[key]._ll.lock();
 					auto L = clients[key]._L;
@@ -1413,14 +1419,14 @@ void do_timer()
 				PostQueuedCompletionStatus(h_iocp, 1, ev.obj_id, &ov->_over);
 				break;
 			}
-			case EV_MOVE_TARGET:
+			/*case EV_MOVE_TARGET:
 			{
 				OVER_EXP* ov = new OVER_EXP;
 				ov->_comp_type = OP_NPC_MOVE;
 				ov->_ai_target_obj = clients[ev.obj_id]._player;
 				PostQueuedCompletionStatus(h_iocp, 1, ev.obj_id, &ov->_over);
 				break;
-			}
+			}*/
 			}
 			continue;		// 즉시 다음 작업 꺼내기
 		}
