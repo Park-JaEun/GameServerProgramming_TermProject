@@ -26,6 +26,8 @@ const int GRID_SIZE = 100;
 const int dx[] = { -1, 1, 0, 0 };
 const int dy[] = { 0, 0, -1, 1 };
 
+vector<int>sector[SECTOR_COUNT_Y][SECTOR_COUNT_X];
+
 // 길찾기 알고리즘에 사용할 노드 클래스
 struct Node {
 	int x, y;
@@ -449,6 +451,20 @@ void WakeUpNPC(int npc_id, int waker)
 	timer_queue.push(ev);
 }
 
+vector<int> getSectorCandidates(int x, int y) {
+	vector<int> result;
+	int sx = x / SECTOR_SIZE;
+	int sy = y / SECTOR_SIZE;
+	for (int yy = max(0, sy - 1); yy <= min(SECTOR_COUNT_Y - 1, sy + 1); yy++) {
+		for (int xx = max(0, sx - 1); xx <= min(SECTOR_COUNT_X - 1, sx + 1); xx++) {
+			for (auto pid : sector[yy][xx]) {
+				result.push_back(pid);
+			}
+		}
+	}
+	return result;
+}
+
 void process_packet(int c_id, char* packet)
 {
 	switch (packet[2]) {
@@ -535,16 +551,16 @@ void process_packet(int c_id, char* packet)
 			clients[c_id]._vl.lock();
 			unordered_set<int> old_vlist = clients[c_id]._view_list;
 			clients[c_id]._vl.unlock();
-			for (auto& cl : clients) {
-				if (cl._state != ST_INGAME) continue;
-				if (cl._id == c_id) continue;
-				if (can_see(c_id, cl._id))
-					near_list.insert(cl._id);
-				if (cl._npc_type == NT_AGRO && cl._npc_attack == false && in_npc_see(c_id, cl._id))
-					if (cl._id > MAX_USER) {
-						cl._npc_attack = true;
-						cl._npc_target = c_id;
-					}
+
+			auto candidateList = getSectorCandidates(clients[c_id].x, clients[c_id].y);
+			for (int pid : candidateList) {
+				if (clients[pid]._state != ST_INGAME)continue;
+				if (pid == c_id)continue;
+				if (can_see(c_id, pid))near_list.insert(pid);
+				if (clients[pid]._npc_type == NT_AGRO && clients[pid]._npc_attack == false && in_npc_see(c_id, pid))
+				if (pid > MAX_USER) { 
+						clients[pid]._npc_attack = true; clients[pid]._npc_target = c_id; 
+				}
 			}
 
 			clients[c_id].send_move_packet(c_id);
@@ -873,11 +889,12 @@ void do_npc_random_move(int npc_id)
 	SESSION& npc = clients[npc_id];
 	unordered_set<int> old_vl;
 
-	for (auto& obj : clients) {
-		if (ST_INGAME != obj._state) continue;
-		if (true == is_npc(obj._id)) continue;
-		if (true == can_see(npc._id, obj._id))
-			old_vl.insert(obj._id);
+	auto candidateList = getSectorCandidates(npc.x, npc.y);
+	for (int pid : candidateList) {
+		if (clients[pid]._state != ST_INGAME) continue;
+		if (is_npc(pid)) continue;
+		if (can_see(npc._id, pid))
+			old_vl.insert(pid);
 	}
 
 	int x = npc.x;
@@ -997,6 +1014,12 @@ void do_npc_goto_target(int npc_id, int target_id)
 
 	unordered_set<int> old_vl;
 
+	int min_x = min(npc.x, target.x) - 10; if (min_x < 0)min_x = 0;
+	int max_x = max(npc.x, target.x) + 10; if (max_x >= W_WIDTH)max_x = W_WIDTH - 1;
+	int min_y = min(npc.y, target.y) - 10; if (min_y < 0)min_y = 0;
+	int max_y = max(npc.y, target.y) + 10; if (max_y >= W_HEIGHT)max_y = W_HEIGHT - 1;
+
+
 	for (auto& obj : clients) {
 		if (ST_INGAME != obj._state) continue;
 		if (true == is_npc(obj._id)) continue;
@@ -1075,6 +1098,9 @@ void do_npc_goto_target(int npc_id, int target_id)
             int newX = current.x + dx[i];
             int newY = current.y + dy[i];
             if (isValid(newX, newY) && !isObstacle(newX, newY)) {
+				if (newX<min_x || newX>max_x || newY<min_y || newY>max_y)
+					continue;
+
                 int newG = current.g + 1;
                 int newH = heuristic(newX, newY, target.x, target.y);
                 Node neighbor(newX, newY, newG, newH, new Node(current));
