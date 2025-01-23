@@ -43,6 +43,9 @@ constexpr char SC_DIE = 13;   //++
 constexpr char SC_CLOUD = 14;   //++
 constexpr char SC_ITEM = 15;   //++
 
+constexpr int VIEW_RANGE = 5;
+constexpr int NPC_VIEW_RANGE = 3;
+
 enum N_TYPE { NT_PEACE, NT_AGRO, NT_PLAYER, NT_FIX, NT_ROAM };
 
 #pragma pack (push, 1)
